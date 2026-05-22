@@ -64,8 +64,14 @@ export default function RegistroOfertas() {
     });
 
     try {
+<<<<<<< Updated upstream
       // 2. Disparamos la petición POST asíncrona hacia Django
       const response = await axios.post('http://localhost:8000/api/crear/', formPayload, {
+=======
+      // 2. Disparamos la petición POST al nuevo endpoint de Django
+      // (Asegúrate de ajustar la URL base según cómo hayas configurado tu proyecto raíz)
+      const response = await axios.post('/api/crear/', formPayload, {        
+>>>>>>> Stashed changes
         headers: {
           'Content-Type': 'multipart/form-data', // Requisito esencial para procesar archivos
         },
