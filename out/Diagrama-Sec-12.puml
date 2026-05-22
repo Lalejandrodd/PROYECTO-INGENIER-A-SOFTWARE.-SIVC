@@ -1,0 +1,68 @@
+@startuml Diagrama_de_Secuencia_HU12_Zoom
+
+' --- CONFIGURACIÓN VISUAL ---
+skinparam BoxPadding 15
+skinparam ParticipantPadding 15
+skinparam maxMessageSize 180
+skinparam linetype ortho
+
+participant "o:Oferta" as Oferta
+participant "r:Repuesto" as Repuesto
+participant "MatrizCompatibilidad" as Matriz
+participant "TasacionService" as Service
+database "Base de Datos" as BD
+
+' --- FLUJO PRINCIPAL ---
+
+[-> Oferta : save()
+activate Oferta
+
+note over Oferta: Interceptación del ciclo de vida (Fat Model)
+
+' 1. Obtención del año del vehículo compatible vía ORM tal como está en tus clases
+Oferta -> Repuesto : self.repuesto.compatibilidad.first()
+activate Repuesto
+Repuesto -> Matriz : get_first_relation()
+activate Matriz
+Matriz -> BD : SELECT * FROM matriz_compatibilidad WHERE repuesto_id = ... LIMIT 1
+activate BD
+BD --> Matriz : registro compatibilidad (vehiculo asociado)
+deactivate BD
+Matriz --> Repuesto : objeto vehiculo
+deactivate Matriz
+Repuesto --> Oferta : vehiculo.anio (Extrae el entero ej: 2018)
+deactivate Repuesto
+
+' 2. Empaquetado de datos técnicos reales de tu backend
+note over Oferta: datos_tecnicos = {\n 'estado_fisico': self.repuesto.estado,\n 'categoria': self.repuesto.categoria,\n 'anio_vehiculo': anio\n}
+
+Oferta -> Service : v := calcularPuntosAlgoritmicamente(datos_tecnicos)
+activate Service
+
+' Aislamiento visual de la inteligencia matemática
+group Lógica de Tasación (Código Real de GitHub 2026)
+    Service -> Service : Definir puntos_base = 100.0
+    
+    note over Service: Mapeo de Diccionarios de tu Repositorio:\n• multiplicadores_estado ('Nuevo'->1.5, 'Para repuesto'->0.5)\n• multiplicadores_cat ('Motor'->1.3, 'Carrocería'->1.0)
+    
+    Service -> Service : Calcular depreciación por antigüedad:\n_antiguedad = 2026 - int(anio_vehiculo)\n_depreciacion = max(0.5, 1 - (_antiguedad * 0.05))
+    
+    Service -> Service : _resultado = puntos_base * m_estado * m_cat * _depreciacion
+    Service -> Service : round(_resultado, 2)
+end
+
+Service --> Oferta : valor_calculado (v)
+deactivate Service
+
+' 3. Asignación y Persistencia Base de Django
+Oferta -> Oferta : self.valor_puntos = v
+
+Oferta -> BD : super(Oferta, self).save() (INSERT INTO ofertas_oferta)
+activate BD
+BD --> Oferta : Confirmación (UUID generado en BD)
+deactivate BD
+
+[<-- Oferta : éxito (id_inventario, v)
+deactivate Oferta
+
+@enduml

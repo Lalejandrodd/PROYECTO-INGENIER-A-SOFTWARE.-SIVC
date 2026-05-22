@@ -1,0 +1,100 @@
+@startuml Diagrama_de_Secuencia_Historial_y_Ranking
+
+' --- CONFIGURACIÓN VISUAL ---
+skinparam BoxPadding 15
+skinparam ParticipantPadding 15
+skinparam maxMessageSize 180
+skinparam linetype ortho
+
+actor "Vecino\n(Autenticado)" as VecinoActor
+participant ":Sistema" as Sistema
+participant "v:Vecino" as VecinoInstancia
+participant "h:Historial" as HistorialInstancia
+participant "t:Transaccion" as TransaccionClase
+database "Base de Datos" as BD
+
+' --- FLUJO PRINCIPAL ---
+
+VecinoActor -> Sistema : mi_historial(request)
+activate Sistema
+
+' --- PASO 1: SEGURIDAD Y VALIDACIÓN DE MÉTODO ---
+note over Sistema: Paso 1: Validación de Identidad y Protocolo HTTP
+
+alt [request.user no está autenticado OR rol != 'Vecino']
+    Sistema --> VecinoActor : JsonResponse({"error": "No autorizado"}, status=401)
+else [Usuario Autenticado como Vecino]
+    
+    Sistema -> Sistema : validar_metodo_get()
+    
+    alt [Método HTTP != GET]
+        Sistema --> VecinoActor : JsonResponse({"error": "Método no permitido"}, status=405)
+    else [Método HTTP es GET]
+
+        ' --- PASO 2: RECUPERACIÓN DE INSTANCIAS (ORM) ---
+        note over Sistema, HistorialInstancia: Paso 2: Obtención de instancias via ORM (OneToOneField)
+        
+        Sistema -> VecinoInstancia : v := objects.get(user=request.user)
+        activate VecinoInstancia
+        VecinoInstancia -> BD : SELECT * FROM Vecino WHERE user_id = ...
+        activate BD
+        BD --> VecinoInstancia : Datos del vecino
+        deactivate BD
+        VecinoInstancia --> Sistema : objeto v
+        deactivate VecinoInstancia
+        
+        ' El sistema recupera el historial a través de la relación inversa o directa del modelo
+        Sistema -> VecinoInstancia : h := v.historial
+        activate VecinoInstancia
+        VecinoInstancia --> Sistema : objeto h (Historial)
+        deactivate VecinoInstancia
+
+        ' --- PASO 3: EL EXPERTO EN INFORMACIÓN (CÁLCULO) ---
+        note over Sistema, HistorialInstancia: Paso 3: Encapsulamiento del cálculo de puntos
+
+        ' Invocación al método oficial con barra de activación larga para denotar el procesamiento interno
+        Sistema -> HistorialInstancia : total_puntos := calcularResumenPuntos()
+        activate HistorialInstancia
+        
+        ' El historial consulta su colección ManyToMany o clave foránea de transacciones
+        HistorialInstancia -> BD : SELECT puntos_transferidos FROM Transaccion WHERE historial_id = h.id
+        activate BD
+        BD --> HistorialInstancia : Colección de registros (t_list)
+        deactivate BD
+        
+        ' Inicialización de variable acumuladora en memoria
+        note over HistorialInstancia: total := 0
+        
+        ' Bucle de lectura y acumulación sin mutación de estados (Read-Only)
+        loop [Para cada transacción 't' en t_list]
+            HistorialInstancia -> HistorialInstancia : total := total + t.puntos_transferidos
+        end
+        
+        HistorialInstancia --> Sistema : total_puntos (total)
+        deactivate HistorialInstancia
+
+        ' --- PASO 4: GAMIFICACIÓN Y RANKING (HU 8) ---
+        note over Sistema, VecinoInstancia: Paso 4: Cálculo dinámico de posición del Ranking
+        
+        ' El sistema interroga al vecino para conocer su posición comparativa
+        Sistema -> VecinoInstancia : pos := obtener_ranking(total_puntos)
+        activate VecinoInstancia
+        note over VecinoInstancia: Evalúa umbrales en base a los puntos\n(ej. total >= 1000 -> Leyenda)
+        VecinoInstancia -> BD : SELECT COUNT(*) FROM Vecino WHERE saldoPuntos > v.saldoPuntos
+        activate BD
+        BD --> VecinoInstancia : conteo de usuarios por encima
+        deactivate BD
+        VecinoInstancia --> Sistema : posición del ranking (pos)
+        deactivate VecinoInstancia
+
+        ' --- PASO 5: RESPUESTA FINAL INALTERABLE ---
+        note over Sistema, VecinoActor: Paso 5: Despacho de JSON Seguro
+        
+        note over Sistema: {Constraint: Read-Only tras éxito de transacción}\nNo se invocan métodos save() o update()
+        Sistema --> VecinoActor : JsonResponse({\n "puntos": total_puntos,\n "ranking": pos,\n "historial": [...]\n}, status=200)
+
+    end
+end
+
+deactivate Sistema
+@enduml

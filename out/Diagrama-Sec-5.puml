@@ -1,0 +1,63 @@
+@startuml Diagrama_de_Secuencia_HU5_Logistica
+
+' --- CONFIGURACIÓN VISUAL ---
+skinparam BoxPadding 15
+skinparam ParticipantPadding 15
+skinparam maxMessageSize 180
+skinparam linetype ortho
+
+actor Vecino
+participant ":Sistema\n(LogisticaView)" as Sistema
+participant "o:Oferta" as Oferta
+database "Base de Datos" as BD
+
+' --- FLUJO PRINCIPAL ---
+
+Vecino -> Sistema : configurar_logistica(id_inventario, horario, ubicacion)
+activate Sistema
+
+' --- PASO 1: GUARDAS DE SEGURIDAD EN EL ENDPOINT ---
+note over Sistema: Paso 1: Verificación de Formato y Reglas de Negocio
+
+alt [horario == NULL OR NOT validar_formato_ventana_tiempo(horario)]
+    Sistema --> Vecino : JsonResponse({"error": "Formato de horario inválido (Ventana de Tiempo requerida)"}, status=400)
+else [Formato de Entrada Correcto]
+
+    ' --- PASO 2: OBTENCIÓN DE LA ENTIDAD BASE ---
+    note over Sistema, Oferta: Paso 2: Recuperación de la Oferta a modificar via ORM
+    
+    Sistema -> Oferta : o := objects.get(id=id_inventario)
+    activate Oferta
+    Oferta -> BD : SELECT * FROM ofertas_oferta WHERE id = id_inventario
+    activate BD
+    BD --> Oferta : Datos actuales de la Oferta
+    deactivate BD
+    Oferta --> Sistema : objeto o (instancia)
+    deactivate Oferta
+
+    ' --- PASO 3: MODIFICACIÓN DIRECTA DE ATRIBUTOS NATIVOS ---
+    note over Sistema, Oferta: Paso 3: Actualización de Atributos del Modelo (Sin entidades fantasma)
+    
+    ' Se asignan los nuevos valores directamente sobre el objeto Oferta cargado en memoria
+    Sistema -> Oferta : o.rango_horario = horario
+    activate Oferta
+    Sistema -> Oferta : o.referencia_ubicacion = ubicacion
+    
+    ' Persistencia vía UPDATE en la misma tabla de la oferta
+    Sistema -> Oferta : save()
+    Oferta -> BD : UPDATE ofertas_oferta SET rango_horario = ..., referencia_ubicacion = ... WHERE id = ...
+    activate BD
+    BD --> Oferta : Confirmación UPDATE OK
+    deactivate BD
+    
+    Oferta --> Sistema : ok
+    deactivate Oferta
+
+    ' --- PASO 4: RESPUESTA DE SINCRONIZACIÓN ---
+    note over Sistema, Vecino: Paso 4: Confirmación del Cambio de Estado
+    Sistema --> Vecino : JsonResponse({"status": "Logística sincronizada correctamente"}, status=200)
+
+end
+
+deactivate Sistema
+@enduml

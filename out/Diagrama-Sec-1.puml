@@ -1,0 +1,93 @@
+@startuml Diagrama_de_Secuencia_HU1_Master
+
+' --- CONFIGURACIÓN VISUAL ---
+skinparam BoxPadding 15
+skinparam ParticipantPadding 15
+skinparam maxMessageSize 180
+skinparam linetype ortho
+
+actor "Vecino\n(Ofertante)" as Actor
+participant ":Sistema\n(OfertaView)" as Sistema
+participant "r:Repuesto" as Repuesto
+participant "o:Oferta" as Oferta
+participant "f:Fotografia" as Fotografia
+database "Base de Datos" as BD
+
+' --- FLUJO PRINCIPAL ---
+
+Actor -> Sistema : registrar_oferta(datos_repuesto, datos_logistica, lista_fotos)
+activate Sistema
+
+' --- PASO 1: VALIDACIONES PREVIAS ---
+note over Sistema: Paso 1: Validaciones de Negocio en Controlador (Guardas ERS)
+
+alt [Vecino.residencia == NULL]
+    Sistema --> Actor : JsonResponse({"error": "Perfil incompleto"}, status=400)
+else [Usuario Válido]
+    
+    alt [Publicaciones diarias del vecino > 5]
+        Sistema --> Actor : JsonResponse({"error": "Límite diario superado"}, status=400)
+    else [Límites OK]
+        
+        alt [lista_fotos.length < 3 OR lista_fotos.length > 5]
+            Sistema --> Actor : JsonResponse({"error": "Se requieren de 3 a 5 fotos"}, status=400)
+        else [Cantidad de Fotos Válida]
+
+            ' --- PASO 2: INSTANCIACIÓN EN MEMORIA ---
+            note over Sistema, Oferta: Paso 2: Creación de Entidades en Memoria Vía ORM
+            
+            Sistema -> Repuesto : r := --init--(nombre_pieza, estado_fisico, categoria)
+            activate Repuesto
+            Repuesto --> Sistema : objeto r
+            deactivate Repuesto
+            
+            ' Los datos logísticos nativos viajan aquí en el flujo de creación inicial (HU 5 cruzada)
+            Sistema -> Oferta : o := --init--(repuesto=r, usuario, rango_horario, referencia_ubicacion)
+            activate Oferta
+            Oferta --> Sistema : objeto o
+            deactivate Oferta
+
+            ' --- PASO 3: DELEGACIÓN DE TASACIÓN (CAJA REF) ---
+            note over Oferta: Paso 3: Encapsulamiento del Ciclo de Vida (HU 12)
+            
+            ' El controlador delega el guardado nativo de Django
+            Sistema -> Oferta : save()
+            activate Oferta
+                
+                ' LA SOLUCIÓN TÉCNICA: Cuadro de referencia externo para limpiar la HU 1
+                ref over Oferta, BD : Ver Diagrama HU 12: Tasación Algorítmica (Via save() de Oferta)
+                
+            Oferta --> Sistema : éxito (id_inventario, valor_puntos)
+            deactivate Oferta
+
+            ' --- PASO 4: PROCESAMIENTO DE IMÁGENES ---
+            note over Sistema, Fotografia: Paso 4: Bucle de Registro de Fotografías
+            
+            loop [Para cada 'imagen' en lista_fotos]
+                Sistema -> Sistema : validar_formato(imagen)
+                
+                alt [Formato es .jpg o .png]
+                    Sistema -> Fotografia : f := --init--(oferta=o, url_imagen=imagen)
+                    activate Fotografia
+                    Fotografia -> BD : save() (INSERT INTO fotografia)
+                    activate BD
+                    BD --> Fotografia : ok
+                    deactivate BD
+                    Fotografia --> Sistema : objeto f
+                    deactivate Fotografia
+                else [Formato Inválido]
+                    note over Sistema: Transacción abortada (Rollback automático)
+                    Sistema --> Actor : JsonResponse({"error": "Formato de imagen no permitido"}, status=400)
+                end
+            end
+
+            ' --- PASO 5: RESPUESTA FINAL ---
+            note over Sistema, Actor: Paso 5: Despacho de JSON de Confirmación
+            Sistema --> Actor : JsonResponse({\n "id": id_inventario,\n "puntos": valor_puntos,\n "mensaje": "Oferta publicada"\n}, status=201)
+
+        end
+    end
+end
+
+deactivate Sistema
+@enduml
