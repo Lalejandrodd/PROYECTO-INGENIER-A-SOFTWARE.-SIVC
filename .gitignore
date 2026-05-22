@@ -1,0 +1,63 @@
+# Base de datos SQLite
+*.sqlite3
+*.db
+db.sqlite3
+
+# Entorno virtual
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Django
+*.log
+*.pot
+*.pyc
+local_settings.py
+migrations/0*.py
+!migrations/__init__.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Archivos estáticos y media
+staticfiles/
+static/
+media/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+
+# Archivos de prueba y temporales
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Archivos de configuración local
+.env.local
+.env.production
+
+# Archivos de respaldo
+*.csv
+*.xlsx
+*.json.backup
