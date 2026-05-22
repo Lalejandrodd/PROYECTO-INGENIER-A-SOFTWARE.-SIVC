@@ -29,9 +29,8 @@ def buscar_repuestos(request):
                 anio=anio
             )
             
-            # IMPORTANTE: Usar la relación ManyToMany directamente
             ofertas = Oferta.objects.filter(
-                repuesto__compatibilidad=vehiculo,  # ← Esto usa la tabla repuestos_repuesto_compatibilidad
+                repuesto__compatibilidad=vehiculo,  
                 estado_oferta=True
             ).distinct()
             
