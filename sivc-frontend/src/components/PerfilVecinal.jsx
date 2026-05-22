@@ -10,11 +10,9 @@ export default function PerfilVecinal() {
     const obtenerHistorial = async () => {
       try {
         const sessionid = localStorage.getItem('sessionid');
-        console.log('SessionID a enviar:', sessionid);
-        
         const response = await axios.get('/api/historial/', {
           headers: {
-            'X-Session-ID': sessionid || ''  // Enviar sessionid en header
+            'X-Session-ID': sessionid || ''
           },
           withCredentials: true
         });
@@ -32,7 +30,6 @@ export default function PerfilVecinal() {
     };
     obtenerHistorial();
   }, []);
-
 
   if (cargando) return <div className="p-6 text-center">Cargando perfil...</div>;
   if (error) return <div className="p-6 text-center text-red-600">{error}</div>;

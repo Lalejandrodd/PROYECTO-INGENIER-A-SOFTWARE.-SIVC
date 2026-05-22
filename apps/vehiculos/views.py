@@ -49,3 +49,7 @@ def buscar_repuestos(request):
         return Response([], status=200)
     except Exception as e:
         return Response({"error": f"Error en el servidor: {str(e)}"}, status=500)
+    
+def listar_vehiculos(request):
+    vehiculos = Vehiculo.objects.all().values('id', 'marca', 'modelo', 'anio')
+    return JsonResponse(list(vehiculos), safe=False)

@@ -1,6 +1,10 @@
+import json
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from django.shortcuts import render
 from django.http import JsonResponse
 from apps.ofertas.models import Oferta
+from apps.repuestos.models import Repuesto
 from apps.vehiculos.models import Vehiculo
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -54,38 +58,91 @@ def buscar_repuestos(request):
             
     return JsonResponse({"error": "Método no permitido. Usa GET."}, status=405)
 
-@api_view(['POST'])
+@csrf_exempt
+@require_http_methods(["POST"])
 def crear_oferta(request):
-    """
-    Endpoint para recibir los datos del frontend (HU 1, 7, 12)
-    """
+    """POST /api/crear/ - Crear una oferta"""
     try:
+        # Obtener sessionid del header
+        session_id = request.headers.get('X-Session-ID')
         
-        # ---- prueba :p ----
-        #print("=== ¡NUEVA PETICIÓN DESDE REACT ===")
-        #print("Datos de texto recibidos:", request.data)
-        #print("Archivos/Fotos recibidos:", request.FILES.getlist('imagenes'))
-        #print("==================================")
-        # --------------------------------------
-
-        # 1. Extraemos los datos de texto
-        marca = request.data.get('marca')
-        modelo = request.data.get('modelo')
-        anio = request.data.get('anio')
-        descripcion = request.data.get('descripcion')
+        from django.contrib.sessions.models import Session
+        from apps.usuarios.models import Usuario
         
-        # 2. Extraemos las imágenes enviadas (es una lista de archivos)
-        imagenes = request.FILES.getlist('imagenes')
-
-        # Validaciones básicas de seguridad en backend
-        if not all([marca, modelo, anio]) or len(imagenes) < 3:
-            return Response({"error": "Datos incompletos o faltan imágenes."}, status=400)
+        user = None
+        if session_id:
+            try:
+                session = Session.objects.get(session_key=session_id)
+                session_data = session.get_decoded()
+                user_id = session_data.get('_auth_user_id')
+                if user_id:
+                    user = Usuario.objects.get(id=user_id)
+            except Exception as e:
+                print(f"Error recuperando sesión: {e}")
         
-        # Respuesta exitosa para decirle a React que todo salió bien
-        return Response({
-            "mensaje": "¡Oferta recibida en el servidor y procesada con éxito!",
-            "datos_recibidos": f"{marca} {modelo} ({anio})"
+        if not user:
+            return JsonResponse({"error": "Usuario no autenticado"}, status=401)
+        
+        # Leer datos (FormData o JSON)
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            repuesto_id = request.POST.get('repuesto_id')
+            rango_horario = request.POST.get('rango_horario')
+            referencia_ubicacion = request.POST.get('referencia_ubicacion')
+        else:
+            data = json.loads(request.body)
+            repuesto_id = data.get('repuesto_id')
+            rango_horario = data.get('rango_horario')
+            referencia_ubicacion = data.get('referencia_ubicacion')
+        
+        # Validaciones
+        if not repuesto_id:
+            return JsonResponse({"error": "repuesto_id es requerido"}, status=400)
+        if not rango_horario:
+            return JsonResponse({"error": "rango_horario es requerido"}, status=400)
+        if not referencia_ubicacion:
+            return JsonResponse({"error": "referencia_ubicacion es requerido"}, status=400)
+        
+        # Buscar repuesto
+        from apps.repuestos.models import Repuesto
+        try:
+            repuesto = Repuesto.objects.get(id_repuesto=repuesto_id)
+        except Repuesto.DoesNotExist:
+            return JsonResponse({"error": "Repuesto no encontrado"}, status=404)
+        
+        # Obtener año del vehículo compatible para tasación
+        vehiculo = repuesto.compatibilidad.first()
+        anio_ref = vehiculo.anio if vehiculo else 2020
+        
+        from apps.transacciones.services import TasacionService
+        datos_tecnicos = {
+            'estado_fisico': repuesto.estado_fisico,
+            'categoria': repuesto.nombre_pieza,
+            'anio_vehiculo': anio_ref
+        }
+        valor_puntos = TasacionService.calcularPuntosAlgoritmicamente(datos_tecnicos)
+        
+        # Crear oferta
+        from apps.ofertas.models import Oferta
+        oferta = Oferta.objects.create(
+            repuesto=repuesto,
+            usuario=user,
+            rango_horario=rango_horario,
+            referencia_ubicacion=referencia_ubicacion,
+            estado_oferta=True,
+            valor_puntos=valor_puntos
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Oferta creada exitosamente',
+            'id_inventario': str(oferta.id_inventario),
+            'valor_puntos': oferta.valor_puntos
         }, status=201)
-
+        
     except Exception as e:
-        return Response({"error": f"Error interno: {str(e)}"}, status=500)
+        print(f"Error en crear_oferta: {str(e)}")
+        return JsonResponse({"error": str(e)}, status=500)
+    
+def listar_repuestos(request):
+    repuestos = Repuesto.objects.all().values('id_repuesto', 'nombre_pieza', 'estado_fisico')
+    return JsonResponse(list(repuestos), safe=False)
