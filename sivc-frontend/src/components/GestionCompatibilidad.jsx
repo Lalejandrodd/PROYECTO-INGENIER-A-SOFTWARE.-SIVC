@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // Enrutamiento para conectar las interfaces
 
-// Interfaz de la HU 3
+// Interfaz de la HU 3 (Gestión de Compatibilidad Mecánica)
 
 // Repuestos base registrados
 const LISTADO_REPUESTOS_MAESTROS = [
@@ -18,10 +19,19 @@ const VEHICULOS_DISPONIBLES = [
   { id: "v5", marca: "Ford", modelo: "Fiesta Move (2011-2014)" }
 ];
 
-export default function MatrizCompatibilidad() {
+export default function GestionCompatibilidad() {
+  const navigate = useNavigate(); // Instancia para cambiar de pantalla individualmente
+
   const [repuestoSeleccionado, setRepuestoSeleccionado] = useState('');
   const [compatibilidades, setCompatibilidades] = useState({});
   const [guardado, setGuardado] = useState(false);
+
+  // Solución de Integridad: Limpia la matriz al cambiar de repuesto maestro
+  const handleRepuestoChange = (e) => {
+    setRepuestoSeleccionado(e.target.value);
+    setGuardado(false);
+    setCompatibilidades({}); 
+  };
 
   const handleCheckboxChange = (vehiculoId) => {
     setCompatibilidades(prev => ({
@@ -34,14 +44,18 @@ export default function MatrizCompatibilidad() {
   const handleSaveMatrix = (e) => {
     e.preventDefault();
     if (!repuestoSeleccionado) return;
+    
     // Simula el almacenamiento persistente relacional de la ERS
     setGuardado(true);
+
+    // Redirección automática inmediata tras procesar con éxito el guardado.
+    navigate('/catalogo');
   };
 
   return (
     <div className="max-w-3xl mx-auto p-6 bg-white rounded-xl shadow-md border border-gray-200">
       <div className="mb-4">
-        <h2 className="text-xl font-bold text-gray-800">Panel Técnico: Matriz de Compatibilidad Mecánica</h2>
+        <h2 className="text-xl font-bold text-gray-800">Panel Técnico: Gestión de Compatibilidad Mecánica</h2>
         <p className="text-xs text-gray-400">Asocia piezas genéricas o específicas con múltiples líneas automotrices habilitadas.</p>
       </div>
 
@@ -49,8 +63,13 @@ export default function MatrizCompatibilidad() {
         {/* Selector Maestro */}
         <div>
           <label className="block text-xs font-bold text-gray-600 uppercase mb-1">1. Seleccionar Repuesto Maestro</label>
-          <select value={repuestoSeleccionado} onChange={(e) => { setRepuestoSeleccionado(e.target.value); setGuardado(false); }} className="block w-full p-2.5 bg-gray-50 border border-gray-300 rounded-md text-sm">
-            <option value="">-- Eliga un componente base del inventario --</option>
+          {/* LÍNEA 56 CORREGIDA: Se eliminó bg-gray-50 para dejar únicamente bg-white */}
+          <select 
+            value={repuestoSeleccionado} 
+            onChange={handleRepuestoChange} 
+            className="block w-full p-2.5 border border-gray-300 rounded-md text-sm bg-white"
+          >
+            <option value="">-- Elija un componente base del inventario --</option>
             {LISTADO_REPUESTOS_MAESTROS.map(r => (
               <option key={r.id} value={r.id}>{r.nombre}</option>
             ))}
@@ -65,11 +84,12 @@ export default function MatrizCompatibilidad() {
               {VEHICULOS_DISPONIBLES.map((vehiculo) => (
                 <div key={vehiculo.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
                   <div className="flex items-center">
-                    <input type="checkbox" id={vehiculo.id} checked={!!compatibilidades[vehiculo.id]} onChange={() => handleCheckboxChange(vehiculo.id)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
-                    <label htmlFor={vehiculo.id} className="ml-3 text-sm text-gray-700 font-medium">
+                    <input type="checkbox" id={vehiculo.id} checked={!!compatibilidades[vehiculo.id]} onChange={() => handleCheckboxChange(vehiculo.id)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer" />
+                    <label htmlFor={vehiculo.id} className="ml-3 text-sm text-gray-700 font-medium cursor-pointer select-none">
                       {vehiculo.marca} <span className="text-gray-400 text-xs">({vehiculo.modelo})</span>
                     </label>
                   </div>
+                  {/* LÍNEA 72 CORREGIDA: Se añadieron las llaves externas y las comillas invertidas (backticks) */}
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${compatibilidades[vehiculo.id] ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-500'}`}>
                     {compatibilidades[vehiculo.id] ? 'Enlazado' : 'Inactivo'}
                   </span>
