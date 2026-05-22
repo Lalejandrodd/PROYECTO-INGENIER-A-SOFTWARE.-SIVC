@@ -28,7 +28,7 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
 
     try {
       // aqui se envia la petición GET con los Query Params estructurados
-      const response = await axios.get('http://localhost:8000/api/buscar/', {
+      const response = await axios.get('/api/buscar/', {
         params: {
           marca: marca,
           modelo: modelo,

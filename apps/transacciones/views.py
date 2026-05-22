@@ -1,52 +1,47 @@
 from django.shortcuts import render
-
-# Create your views here.
 from django.http import JsonResponse
 from django.contrib.auth.models import User
 from apps.transacciones.models import Transaccion 
 from apps.usuarios.models import Vecino
+from django.contrib.sessions.models import Session
 
 def mi_historial(request):
-    """
-    Endpoint GET /api/historial/
-    Retorna el historial detallado de puntos del usuario autenticado.
-    """
-    if request.method != 'GET':
-        return JsonResponse({"error": "Método no permitido. Usa GET."}, status=405)
-        
-    # Verificar que el usuario inició sesión
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Usuario no autenticado."}, status=401)
-        
-    try:
-        # 1. Validar si el usuario actual tiene un perfil de vecino asociado
-        if not hasattr(request.user, 'vecino'):
-            return JsonResponse({
-                "error": f"El usuario '{request.user.username}' es administrador o no tiene un perfil de Vecino vinculado en la base de datos."
-            }, status=400)
-
-        # 2. Obtener el objeto vecino asociado directamente al usuario autenticado
-        vecino = request.user.vecino
-        
-        # 3. Verificar que exista el historial vinculado al vecino
+    """Endpoint GET /api/historial/ - usa sessionid del header"""
+    
+    # Intentar obtener sessionid del header
+    session_id = request.headers.get('X-Session-ID')
+    
+    user = None
+    
+    if session_id:
         try:
-            historial = vecino.historial
-        except Exception:
-            return JsonResponse({"error": "No existe un historial asociado para este Vecino."}, status=400)
-
-        if not hasattr(historial, 'calcular_resumen_puntos'):
-            return JsonResponse({"error": "El historial no tiene el método calcular_resumen_puntos()."}, status=500)
-
-        # 4. Ejecutar el método calcular_resumen_puntos() desde el historial del vecino
+            session = Session.objects.get(session_key=session_id)
+            session_data = session.get_decoded()
+            user_id = session_data.get('_auth_user_id')
+            if user_id:
+                from apps.usuarios.models import Usuario
+                user = Usuario.objects.get(id=user_id)
+        except Exception as e:
+            print(f"Error recuperando sesión: {e}")
+    
+    # Si no, intentar con la cookie normal
+    if not user and request.user.is_authenticated:
+        user = request.user
+    
+    if not user:
+        return JsonResponse({"error": "Usuario no autenticado."}, status=401)
+    
+    if not hasattr(user, 'vecino'):
+        return JsonResponse({"error": "El usuario no tiene perfil de Vecino."}, status=400)
+    
+    try:
+        vecino = user.vecino
+        historial = vecino.historial
         resumen = historial.calcular_resumen_puntos()
-        
-        # 5. Retornar el resumen del historial en formato JSON con estado de éxito
         return JsonResponse(resumen, safe=False, status=200)
-        
     except Exception as e:
-        # Captura cualquier otro error inesperado para evitar pantallas de fallo globales
         return JsonResponse({"error": f"Error al obtener el historial: {str(e)}"}, status=500)
-
+    
 def ranking_general(request):
     """
     Endpoint GET /api/ranking/

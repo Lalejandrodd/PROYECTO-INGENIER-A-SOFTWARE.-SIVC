@@ -64,7 +64,7 @@ const handleSubmit = async (e) => {
     try {
       // 2. Disparamos la petición POST al nuevo endpoint de Django
       // (Asegúrate de ajustar la URL base según cómo hayas configurado tu proyecto raíz)
-      const response = await axios.post('http://localhost:8000/api/crear/', formPayload, {
+      const response = await axios.post('/api/registrar/', formPayload, {        
         headers: {
           'Content-Type': 'multipart/form-data', // Fundamental para enviar fotos
         },
