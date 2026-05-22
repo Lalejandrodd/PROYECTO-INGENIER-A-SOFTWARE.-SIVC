@@ -17,10 +17,9 @@ class Transaccion(models.Model):
     fecha_exito = models.DateTimeField(auto_now_add=True)
     puntos_transferidos = models.FloatField()
     
-    # CORREGIDO: ForeignKey en lugar de CharField
     ofertante = models.ForeignKey(
         'usuarios.Vecino',
-        on_delete=models.PROTECT,  # ERS: "On Delete Protect/Restrict"
+        on_delete=models.PROTECT,  
         related_name='transacciones_como_ofertante'
     )
     demandante = models.ForeignKey(
