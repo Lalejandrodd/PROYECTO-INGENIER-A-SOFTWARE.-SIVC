@@ -1,0 +1,83 @@
+@startuml Diagrama_de_Secuencia_Busqueda
+
+' --- CONFIGURACIÓN VISUAL ---
+skinparam BoxPadding 15
+skinparam ParticipantPadding 15
+skinparam maxMessageSize 180
+skinparam linetype ortho
+
+actor "Vecino\n(Demandante)" as Vecino
+participant ":Sistema" as Sistema
+participant "v:Vecino" as VecinoInstancia
+participant "m:MatrizCompatibilidad" as Matriz
+participant "Oferta" as OfertaClase
+participant "instancia:Oferta" as OfertaInstancia
+database "Base de Datos" as BD
+
+' --- FLUJO PRINCIPAL ---
+
+Vecino -> Sistema : realizar_busqueda(marca, modelo, anio)
+activate Sistema
+
+' --- PASO 1: OBTENCIÓN DE CONTEXTO (SALDO) ---
+note over Sistema, VecinoInstancia: Paso 1: Obtener saldo del usuario en sesión (HU 9)
+Sistema -> VecinoInstancia : p := get_saldo()
+activate VecinoInstancia
+VecinoInstancia --> Sistema : saldo_puntos (p)
+deactivate VecinoInstancia
+
+' --- PASO 2: MATRIZ DE COMPATIBILIDAD (HU 2) ---
+note over Sistema, Matriz: Paso 2: Validar compatibilidad técnica
+Sistema -> Matriz : ids := validar_match(marca, modelo, anio)
+activate Matriz
+
+Matriz -> BD : SELECT repuesto_id FROM matriz WHERE marca...
+activate BD
+BD --> Matriz : Lista de IDs de repuestos
+deactivate BD
+
+Matriz --> Sistema : ids
+deactivate Matriz
+
+' --- PASO 3: CONTROL DE FLUJO Y FILTRADO DE OFERTAS ---
+note over Sistema, OfertaClase: Paso 3: Filtrado y Carga de Catálogo
+
+alt [ids está vacío (No hay compatibilidad mecánica)]
+    Sistema --> Vecino : JsonResponse({"error": "No se encontraron repuestos compatibles"}, status=404)
+else [ids contiene elementos]
+
+    ' Se delega a la clase experta el filtrado por IDs y por capacidad de pago (p)
+    Sistema -> OfertaClase : coleccion := filtrar_ofertas(ids, p)
+    activate OfertaClase
+    
+    OfertaClase -> BD : SELECT * FROM Oferta WHERE repuesto_id IN (ids) AND valor_puntos <= p
+    activate BD
+    BD --> OfertaClase : Registros de la Base de Datos
+    deactivate BD
+    
+    ' Bucle de instanciación en memoria
+    loop [Para cada registro encontrado en DB]
+        OfertaClase -> OfertaInstancia : instancia := --init--(data)
+        activate OfertaInstancia
+        note over OfertaInstancia: Se mapean id_inventario\ny valor_puntos
+        OfertaInstancia --> OfertaClase : objeto instancia
+        deactivate OfertaInstancia
+    end
+    
+    OfertaClase --> Sistema : List<Oferta> (coleccion)
+    deactivate OfertaClase
+
+    ' --- PASO 4: RESPUESTA FINAL CON RESTRICCIÓN DE TIEMPO ---
+    note over Sistema, Vecino: Paso 4: Renderizado con Restricción RNF 1
+    
+    alt [coleccion está vacía (Compatibles pero muy caras)]
+        Sistema --> Vecino : JsonResponse({"error": "No te alcanza para los repuestos compatibles"}, status=404)
+    else [Resultados encontrados exitosamente]
+        note over Sistema: [Constraint: Latencia < 30s]
+        Sistema --> Vecino : renderizar_catalogo(coleccion) (status 200 OK)
+    end
+
+end
+
+deactivate Sistema
+@enduml

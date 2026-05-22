@@ -1,0 +1,90 @@
+@startuml Diagrama_de_Secuencia_Vinculacion_Directa
+
+' --- CONFIGURACIÓN VISUAL ---
+skinparam BoxPadding 15
+skinparam ParticipantPadding 15
+skinparam maxMessageSize 180
+skinparam linetype ortho
+
+actor Admin
+participant ":Sistema" as Sistema
+participant "r:Repuesto" as RepuestoClase
+participant "v:Vehiculo" as VehiculoClase
+participant "MatrizCompatibilidad" as MatrizClase
+participant "m:MatrizCompatibilidad" as MatrizInstancia
+database "Base de Datos" as BD
+
+' --- FLUJO PRINCIPAL ---
+
+Admin -> Sistema : vincular_compatibilidad(id_repuesto, lista_ids_v)
+activate Sistema
+
+' --- PASO 1: VALIDACIÓN DE EXISTENCIA DEL REPUESTO ---
+note over Sistema, RepuestoClase: Paso 1: Buscar instancia del repuesto via ORM
+Sistema -> RepuestoClase : r := get(id=id_repuesto)
+activate RepuestoClase
+
+RepuestoClase -> BD : SELECT * FROM Repuesto WHERE id = id_repuesto
+activate BD
+BD --> RepuestoClase : Datos del repuesto o vacío
+deactivate BD
+
+alt [r no existe / DoesNotExist]
+    RepuestoClase --> Sistema : Exception: DoesNotExist
+    Sistema --> Admin : JsonResponse({"error": "Repuesto no encontrado"}, status=404)
+else [r existe]
+    RepuestoClase --> Sistema : objeto r
+    deactivate RepuestoClase
+
+    ' --- PASO 2: BUCLE DE PROCESAMIENTO (CONTROLADOR-DRIVEN) ---
+    note over Sistema, VehiculoClase: Paso 2: Iteración de la lista de vehículos compatibles
+    
+    loop [para cada id_v en lista_ids_v]
+        
+        ' 2.1 Obtención de la instancia del vehículo
+        Sistema -> VehiculoClase : v := get(id=id_v)
+        activate VehiculoClase
+        VehiculoClase -> BD : SELECT * FROM Vehiculo WHERE id = id_v
+        activate BD
+        BD --> VehiculoClase : Datos del Vehículo
+        deactivate BD
+        VehiculoClase --> Sistema : objeto v
+        deactivate VehiculoClase
+
+        ' 2.2 Validación de Duplicidad directo contra el método de clase
+        Sistema -> MatrizClase : existe := validar_match(r.id, v.id)
+        activate MatrizClase
+        MatrizClase --> Sistema : booleano (existe)
+        deactivate MatrizClase
+
+        ' 2.3 Bloque Alt: Control de duplicidad para integridad referencial
+        alt [si existe == False]
+            
+            ' Constructor en memoria usando la sintaxis del ORM
+            Sistema -> MatrizInstancia : m := --init--(repuesto=r, vehiculo=v)
+            activate MatrizInstancia
+            MatrizInstancia --> Sistema : objeto m
+            deactivate MatrizInstancia
+            
+            ' Persistencia fija en la Base de Datos
+            Sistema -> MatrizInstancia : save()
+            activate MatrizInstancia
+            MatrizInstancia -> BD : INSERT INTO MatrizCompatibilidad (repuesto_id, vehiculo_id)
+            activate BD
+            BD --> MatrizInstancia : Confirmación OK
+            deactivate BD
+            MatrizInstancia --> Sistema : ok
+            deactivate MatrizInstancia
+            
+        ' Si existe == True, el sistema ignora el registro de forma implícita
+        end
+    end
+
+    ' --- PASO 3: RESPUESTA DE ÉXITO (FUERA DEL LOOP) ---
+    note over Sistema, Admin: Paso 3: Confirmación de actualización persistente
+    Sistema --> Admin : JsonResponse({"status": "éxito"}, status=201)
+
+end
+
+deactivate Sistema
+@enduml
