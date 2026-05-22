@@ -65,6 +65,11 @@ class Oferta(models.Model):
         Sobrescritura del método save para ejecutar la Tasación Algorítmica.
         Garantiza que el valor sea calculado por el sistema antes de guardar.
         """
+        
+        # Validar el límite diario de publicaciones por usuario (HU 11)
+        from apps.ofertas.services import OfertaService  
+        OfertaService.validar_limite_diario(self.usuario)
+
         # Obtener el año del primer vehículo compatible
         vehiculo = self.repuesto.compatibilidad.first()
         anio_ref = vehiculo.anio if vehiculo else 2020
