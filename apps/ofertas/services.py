@@ -2,7 +2,9 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from .models import Oferta
 
-
+# ---------------------------------------------------------
+# SERVICIO QUE ENCAPSULA LÓGICA DE: Vecino y Oferta
+# ---------------------------------------------------------
 class OfertaService:
     """
     Servicio para manejar reglas de negocio de ofertas
@@ -19,6 +21,7 @@ class OfertaService:
         hoy = timezone.now().date()
         manana = hoy + timezone.timedelta(days=1)
         
+        # Interacción con CLASE DEL DIAGRAMA: Oferta
         publicaciones_hoy = Oferta.objects.filter(
             usuario=usuario,
             fecha_publicacion__date=hoy
