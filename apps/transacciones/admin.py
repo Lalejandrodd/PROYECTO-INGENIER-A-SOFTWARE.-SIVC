@@ -11,9 +11,13 @@ class TransaccionAdmin(admin.ModelAdmin):
 
 
 class HistorialAdmin(admin.ModelAdmin):
-    list_display = ['vecino', 'total_intercambios', 'es_inalterable']
+    list_display = ['vecino', 'get_total_intercambios', 'es_inalterable']
     search_fields = ['vecino__usuario__nombre_completo']
     filter_horizontal = ['transacciones']
+
+    def get_total_intercambios(self, obj):
+        return obj.total_intercambios
+    get_total_intercambios.short_description = 'Total intercambios'
 
 
 admin.site.register(Transaccion, TransaccionAdmin)

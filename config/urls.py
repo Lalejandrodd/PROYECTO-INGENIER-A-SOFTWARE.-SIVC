@@ -47,11 +47,14 @@ def login_api(request):
             login(request, user)
             request.session.save()
             
+            vecino = user.vecino if hasattr(user, 'vecino') else None
+            
             return JsonResponse({
                 'success': True, 
                 'username': user.username,
                 'is_superuser': user.is_superuser,
-                'sessionid': request.session.session_key
+                'sessionid': request.session.session_key,
+                'user_id': str(vecino.id) if vecino else None
             })
         else:
             return JsonResponse({
@@ -60,7 +63,6 @@ def login_api(request):
             }, status=401)
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
-
 
 # ============================================
 # ENDPOINT DE REGISTRO DE USUARIO
@@ -165,4 +167,5 @@ urlpatterns = [
     path('api/', include('apps.transacciones.urls')),  # historial/, ranking/
     path('api/repuestos/', include('apps.repuestos.urls')),  # listar/, crear/
     path('api/vehiculos/', include('apps.vehiculos.urls')),  # listar vehículos
+    path('api/chat/', include('apps.chat.urls')),  # iniciar/, enviar/
 ]

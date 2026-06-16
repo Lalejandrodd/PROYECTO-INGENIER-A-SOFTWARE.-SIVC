@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import APP_CONFIG from '../config';
+import logo from '../assets/logo.svg';
 
-export default function LoginSIVC({ onLoginSubmit, onRegistrarse }) {
+export default function LogIn({ onLoginSubmit, onRegistrarse }) {
   const [esAdministrador, setEsAdministrador] = useState(false);
   const [credenciales, setCredenciales] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
@@ -16,7 +18,6 @@ export default function LoginSIVC({ onLoginSubmit, onRegistrarse }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!credenciales.username || !credenciales.password) {
       setError('Todos los campos son obligatorios.');
       return;
@@ -28,9 +29,7 @@ export default function LoginSIVC({ onLoginSubmit, onRegistrarse }) {
     try {
       const response = await fetch('http://127.0.0.1:8000/api/login/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: credenciales.username,
           password: credenciales.password,
@@ -41,12 +40,8 @@ export default function LoginSIVC({ onLoginSubmit, onRegistrarse }) {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // GUARDAR EL SESSIONID EN LOCALSTORAGE
-        if (data.sessionid) {
-          localStorage.setItem('sessionid', data.sessionid);
-          console.log('SessionID guardado:', data.sessionid);
-        }
-        
+        localStorage.setItem('sessionid', data.sessionid);
+        localStorage.setItem('user_id', data.user_id);
         if (onLoginSubmit) {
           onLoginSubmit({
             username: data.username,
@@ -69,6 +64,16 @@ export default function LoginSIVC({ onLoginSubmit, onRegistrarse }) {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full space-y-6 p-8 bg-white rounded-xl shadow-lg border border-gray-100">
         
+        <div className="text-center">
+          <img src={logo} alt="Logo" className="h-16 w-auto mx-auto mb-3" />
+          <h2 className="text-2xl font-black text-gray-800 tracking-tight">
+            {APP_CONFIG.nombre}
+          </h2>
+          <p className="text-xs text-gray-400 mt-1">
+            Accede al catálogo de intercambio y revisa tus Puntos de Valor.
+          </p>
+        </div>
+
         <div className="flex border-b border-gray-200">
           <button
             type="button"
@@ -84,17 +89,6 @@ export default function LoginSIVC({ onLoginSubmit, onRegistrarse }) {
           >
             Panel Administrativo
           </button>
-        </div>
-
-        <div className="text-center">
-          <h2 className="text-2xl font-black text-gray-800 tracking-tight">
-            SIVC {esAdministrador ? 'Control' : 'Comunidad'}
-          </h2>
-          <p className="text-xs text-gray-400 mt-1">
-            {esAdministrador 
-              ? 'Área técnica para la gestión de matrices de compatibilidad.' 
-              : 'Accede al catálogo de intercambio y revisa tus Puntos de Valor.'}
-          </p>
         </div>
 
         {error && (
@@ -152,7 +146,6 @@ export default function LoginSIVC({ onLoginSubmit, onRegistrarse }) {
             </button>
           </p>
         </div>
-
       </div>
     </div>
   );

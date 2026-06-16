@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import ChatWidget from './ChatWidget';
 
 const RANKING_LABELS = {
   1: { name: "Novato", color: "bg-gray-100 text-gray-800 border-gray-300" },
@@ -14,6 +15,38 @@ export default function PanelTransacciones() {
   const [ranking, setRanking] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
+  const [conversaciones, setConversaciones] = useState([]);
+  const [chatAbierto, setChatAbierto] = useState(null);
+
+  // Función para cargar conversaciones activas
+  const cargarConversaciones = async () => {
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      const response = await axios.get('/api/chat/conversaciones/', {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      setConversaciones(response.data.conversaciones || []);
+    } catch (err) {
+      console.error('Error cargando conversaciones:', err);
+    }
+  };
+
+  // QUITAR DESPUÉS ESTO ES PARA PROBAR EL CHAT CON UN ACUERDO DE INTERCAMBIO SIMULADO (HU4)
+  const crearAcuerdoPrueba = async () => {
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      await axios.post('/api/chat/crear-acuerdo-prueba/', {}, {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      alert('Acuerdo de prueba creado. Recarga la página.');
+      cargarConversaciones();
+    } catch (err) {
+      console.error(err);
+      alert('Error al crear acuerdo de prueba');
+    }
+  };
 
   useEffect(() => {
     const cargarDatos = async () => {
@@ -21,13 +54,15 @@ export default function PanelTransacciones() {
         const sessionid = localStorage.getItem('sessionid');
         const headers = { 'X-Session-ID': sessionid || '' };
         
-        const [historialRes, rankingRes] = await Promise.all([
+        const [historialRes, rankingRes, conversacionesRes] = await Promise.all([
           axios.get('/api/historial/', { headers, withCredentials: true }),
-          axios.get('/api/ranking/', { withCredentials: true })
+          axios.get('/api/ranking/', { withCredentials: true }),
+          axios.get('/api/chat/conversaciones/', { headers, withCredentials: true })
         ]);
         
         setHistorial(historialRes.data);
         setRanking(rankingRes.data.ranking || []);
+        setConversaciones(conversacionesRes.data.conversaciones || []);
       } catch (err) {
         console.error('Error:', err);
         if (err.response?.status === 401) {
@@ -50,6 +85,7 @@ export default function PanelTransacciones() {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen space-y-8 font-sans">
+      {/* Tarjeta de perfil */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Perfil del Vecino</span>
@@ -78,6 +114,7 @@ export default function PanelTransacciones() {
         </div>
       </div>
 
+      {/* Sección de historial y ranking */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
           <div className="flex justify-between items-center border-b border-gray-100 pb-3">
@@ -143,6 +180,50 @@ export default function PanelTransacciones() {
           </div>
         </div>
       </div>
+
+      {/* SECCIÓN: MIS INTERCAMBIOS ACTIVOS (HU4) */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold text-gray-800">Mis Intercambios Activos</h2>
+          {/* Botón opcional para crear acuerdo de prueba (eliminar en producción) */}
+          <button
+            onClick={crearAcuerdoPrueba}
+            className="bg-gray-300 hover:bg-gray-400 text-xs px-2 py-1 rounded"
+          >
+            Probar Chat (Admin)
+          </button>
+        </div>
+        {conversaciones.length === 0 ? (
+          <p className="text-gray-400 text-sm">No hay conversaciones activas.</p>
+        ) : (
+          <div className="space-y-3">
+            {conversaciones.map(conv => (
+              <div key={conv.conversacion_id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="font-medium">{conv.repuesto}</p>
+                  <p className="text-xs text-gray-500">con {conv.contraparte}</p>
+                </div>
+                <button
+                  onClick={() => setChatAbierto(conv)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded"
+                >
+                  Chat Privado
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Widget de chat flotante */}
+      {chatAbierto && (
+        <ChatWidget
+          conversacionId={chatAbierto.conversacion_id}
+          contraparte={chatAbierto.contraparte}
+          repuesto={chatAbierto.repuesto}
+          onClose={() => setChatAbierto(null)}
+        />
+      )}
     </div>
   );
 }

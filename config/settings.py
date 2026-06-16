@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'apps.repuestos',
     'apps.ofertas',
     'apps.transacciones',
+    'apps.chat', 
 ]
 
 MIDDLEWARE = [

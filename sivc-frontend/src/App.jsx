@@ -6,6 +6,8 @@ import RegistroOfertas from './components/RegistroOfertas';
 import RegistroUsuario from './components/RegistroUsuario';
 import LogIn from './components/LogIn';
 import axios from 'axios';
+import APP_CONFIG from './config';
+import logo from './assets/logo.svg';  
 
 function App() {
   const [usuario, setUsuario] = useState(null);
@@ -13,11 +15,14 @@ function App() {
   const [mostrarRegistro, setMostrarRegistro] = useState(false);
   const [verificandoSesion, setVerificandoSesion] = useState(true);
 
-  // Verificar si ya hay una sesión activa al cargar la página
+  // Verificar sesión (mismo código, pero con X-Session-ID)
   useEffect(() => {
+    document.title = APP_CONFIG.nombre;
     const verificarSesion = async () => {
       try {
+        const sessionid = localStorage.getItem('sessionid');
         const response = await axios.get('http://127.0.0.1:8000/api/verificar/', {
+          headers: { 'X-Session-ID': sessionid || '' },
           withCredentials: true
         });
         if (response.data.authenticated) {
@@ -43,12 +48,16 @@ function App() {
 
   const handleLogout = async () => {
     try {
+      const sessionid = localStorage.getItem('sessionid');
       await axios.post('http://127.0.0.1:8000/api/logout/', {}, {
+        headers: { 'X-Session-ID': sessionid || '' },
         withCredentials: true
       });
     } catch (err) {
       console.error('Error al cerrar sesión:', err);
     }
+    localStorage.removeItem('sessionid');
+    localStorage.removeItem('user_id');
     setUsuario(null);
     setVistaActual('perfil');
   };
@@ -81,7 +90,10 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-md p-4 flex justify-between items-center flex-wrap gap-2">
-        <h1 className="text-xl font-bold text-blue-600">SIVC - Comunidad</h1>
+        <div className="flex items-center gap-2">
+          <img src={logo} alt="Logo" className="h-14 w-auto" />
+          <h1 className="text-xl font-bold text-blue-600">{APP_CONFIG.nombre}</h1>
+        </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setVistaActual('perfil')} className={`px-4 py-2 rounded transition ${vistaActual === 'perfil' ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}>
             Mi Perfil
