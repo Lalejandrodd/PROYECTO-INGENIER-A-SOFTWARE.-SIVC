@@ -23,6 +23,12 @@ export default function RegistroOfertas() {
     rango_horario: '',
     referencia_ubicacion: ''
   });
+  
+  // --- NUEVOS ESTADOS PARA LA TÁCTICA DEL INTERMEDIARIO ---
+  const [tipoTasacion, setTipoTasacion] = useState('algoritmico'); 
+  const [valorManual, setValorManual] = useState('');
+  // --------------------------------------------------------
+
   const [imagenes, setImagenes] = useState([]);
   const [errorOferta, setErrorOferta] = useState('');
   const [successOferta, setSuccessOferta] = useState(false);
@@ -44,7 +50,6 @@ export default function RegistroOfertas() {
     cargarVehiculos();
   }, []);
 
-  // Estados físicos disponibles
   const estadosFisicos = [
     'Nuevo',
     'Usado - Como nuevo',
@@ -52,7 +57,6 @@ export default function RegistroOfertas() {
     'Para repuesto'
   ];
 
-  // Manejar cambios en formulario de repuesto
   const handleRepuestoChange = (e) => {
     setRepuestoForm({
       ...repuestoForm,
@@ -61,7 +65,6 @@ export default function RegistroOfertas() {
     setErrorRepuesto('');
   };
 
-  // Crear nuevo repuesto
   const handleCrearRepuesto = async (e) => {
     e.preventDefault();
     setCreandoRepuesto(true);
@@ -70,7 +73,6 @@ export default function RegistroOfertas() {
 
     try {
       const sessionid = localStorage.getItem('sessionid');
-      
       const response = await axios.post('/api/repuestos/crear/', {
         nombre_pieza: repuestoForm.nombre_pieza,
         descripcion_tecnica: repuestoForm.descripcion_tecnica,
@@ -92,7 +94,6 @@ export default function RegistroOfertas() {
           ...ofertaForm,
           repuesto_id: response.data.repuesto.id_repuesto
         });
-        // Limpiar formulario de repuesto
         setRepuestoForm({
           nombre_pieza: '',
           descripcion_tecnica: '',
@@ -113,7 +114,6 @@ export default function RegistroOfertas() {
     }
   };
 
-  // Manejar cambios en formulario de oferta
   const handleOfertaChange = (e) => {
     setOfertaForm({
       ...ofertaForm,
@@ -132,70 +132,70 @@ export default function RegistroOfertas() {
     setErrorOferta('');
   };
 
-  // Publicar oferta
+  // Publicar oferta enviando el tipo de tasación
+// Publicar oferta enviando el tipo de tasación
   const handlePublicarOferta = async (e) => {
-  e.preventDefault();
-  
-  if (imagenes.length < 3 || imagenes.length > 5) {
-    setErrorOferta('Debes subir entre 3 y 5 fotografías.');
-    return;
-  }
-  
-  if (!repuestoCreado || !ofertaForm.rango_horario || !ofertaForm.referencia_ubicacion) {
-    setErrorOferta('Todos los campos son obligatorios.');
-    return;
-  }
-  
-  setCargandoOferta(true);
-  setErrorOferta('');
-
-  try {
-    const sessionid = localStorage.getItem('sessionid');
+    e.preventDefault();
     
-    const formPayload = new FormData();
-    // ¡IMPORTANTE! Usar el ID del repuesto que acabas de crear
-    formPayload.append('repuesto_id', repuestoCreado.id_repuesto);
-    formPayload.append('rango_horario', ofertaForm.rango_horario);
-    formPayload.append('referencia_ubicacion', ofertaForm.referencia_ubicacion);
+    // CORRECCIÓN AQUÍ: Cambiado 'images.length' por 'imagenes.length'
+    if (imagenes.length < 3 || imagenes.length > 5) {
+      setErrorOferta('Debes subir entre 3 y 5 fotografías.');
+      return;
+    }
     
-    imagenes.forEach((imagen) => {
-      formPayload.append('imagenes', imagen);
-    });
+    if (tipoTasacion === 'directo' && (!valorManual || parseFloat(valorManual) <= 0)) {
+      setErrorOferta('Por favor ingresa un valor manual válido mayor a cero.');
+      return;
+    }
 
-    // Usar el endpoint correcto: /api/crear/ (no /api/registrar/)
-    const response = await axios.post('/api/crear/', formPayload, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        'X-Session-ID': sessionid || ''
-      },
-      withCredentials: true
-    });
+    setCargandoOferta(true);
+    setErrorOferta('');
 
-    if (response.data.success || response.data.status === 'success') {
-      setSuccessOferta(true);
-      setOfertaForm({
-        rango_horario: '',
-        referencia_ubicacion: ''
-      });
-      setImagenes([]);
-      setRepuestoCreado(null);
-      setValorCalculado(response.data.valor_puntos);
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      const formPayload = new FormData();
       
-      setTimeout(() => setSuccessOferta(false), 3000);
-    } else {
-      setErrorOferta(response.data.error || 'Error al crear la oferta');
+      formPayload.append('repuesto_id', repuestoCreado.id_repuesto);
+      formPayload.append('rango_horario', ofertaForm.rango_horario);
+      formPayload.append('referencia_ubicacion', ofertaForm.referencia_ubicacion);
+      
+      formPayload.append('tipo_tasacion', tipoTasacion);
+      formPayload.append('valor_manual', tipoTasacion === 'directo' ? valorManual : 0.0);
+
+      imagenes.forEach((imagen) => {
+        formPayload.append('imagenes', imagen);
+      });
+
+      const response = await axios.post('/api/crear/', formPayload, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'X-Session-ID': sessionid || ''
+        },
+        withCredentials: true
+      });
+
+      if (response.data.success || response.data.status === 'success') {
+        setSuccessOferta(true);
+        setOfertaForm({
+          rango_horario: '',
+          referencia_ubicacion: ''
+        });
+        setImagenes([]);
+        setRepuestoCreado(null);
+        setValorCalculado(response.data.valor_puntos); // <-- ESTO ACTUALIZA EL CUADRO AZUL
+        setValorManual('');
+        
+        setTimeout(() => setSuccessOferta(false), 3000);
+      } else {
+        setErrorOferta(response.data.error || 'Error al crear la oferta');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setErrorOferta(err.response?.data?.error || 'Error de conexión');
+    } finally {
+      setCargandoOferta(false);
     }
-  } catch (err) {
-    console.error('Error:', err);
-    if (err.response?.data?.error) {
-      setErrorOferta(err.response.data.error);
-    } else {
-      setErrorOferta('Error de conexión');
-    }
-  } finally {
-    setCargandoOferta(false);
-  }
-};
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -233,7 +233,7 @@ export default function RegistroOfertas() {
                 name="nombre_pieza"
                 value={repuestoForm.nombre_pieza}
                 onChange={handleRepuestoChange}
-                placeholder="Ej: Alternador, Batería, Correa"
+                placeholder="Ej: Motor, Alternador, Batería"
                 className="w-full p-2 border border-gray-300 rounded-md"
                 required
               />
@@ -326,7 +326,7 @@ export default function RegistroOfertas() {
           </form>
         </div>
 
-        {/* COLUMNA DERECHA: Publicar Oferta (se desbloquea después de crear repuesto) */}
+        {/* COLUMNA DERECHA: Publicar Oferta */}
         <div className={`bg-white rounded-xl shadow-md border p-6 transition-all ${!repuestoCreado ? 'opacity-50 bg-gray-50' : 'border-blue-200'}`}>
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span className="bg-green-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">2</span>
@@ -368,6 +368,50 @@ export default function RegistroOfertas() {
               )}
 
               <form onSubmit={handlePublicarOferta} className="space-y-4">
+                
+                {/* --- NUEVO SELECTOR DE ESTRATEGIA (MODIFICABILIDAD) --- */}
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
+                    Modalidad de Valoración (Táctica Md)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      className={`py-2 px-3 text-xs font-bold rounded-md border transition ${tipoTasacion === 'algoritmico' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                      onClick={() => setTipoTasacion('algoritmico')}
+                    >
+                      Tasación Automática
+                    </button>
+                    <button
+                      type="button"
+                      className={`py-2 px-3 text-xs font-bold rounded-md border transition ${tipoTasacion === 'directo' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                      onClick={() => setTipoTasacion('directo')}
+                    >
+                      Intercambio Directo
+                    </button>
+                  </div>
+                </div>
+
+                {/* --- CAMPO EN CALIENTE PARA VALOR MANUAL --- */}
+                {tipoTasacion === 'directo' && (
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <label className="block text-xs font-semibold text-amber-900 uppercase mb-1">
+                      Puntos Acordados Manualmente *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={valorManual}
+                      onChange={(e) => setValorManual(e.target.value)}
+                      placeholder="Ej: 150.00"
+                      className="w-full p-2 border border-amber-300 rounded-md bg-white text-sm"
+                      required
+                    />
+                    <p className="text-[10px] text-amber-700 mt-1">Los vecinos acuerdan libremente las unidades de valor.</p>
+                  </div>
+                )}
+                {/* ----------------------------------------------------- */}
+
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
                     Rango Horario de Disponibilidad *
@@ -392,7 +436,7 @@ export default function RegistroOfertas() {
                     value={ofertaForm.referencia_ubicacion}
                     onChange={handleOfertaChange}
                     rows="2"
-                    placeholder="Ej: Estacionamiento del Bloque A, cerca del Farmatodo"
+                    placeholder="Ej: Estacionamiento del Bloque A"
                     className="w-full p-2 border border-gray-300 rounded-md"
                     required
                   />
@@ -410,17 +454,12 @@ export default function RegistroOfertas() {
                     className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700"
                     required
                   />
-                  <span className="text-xs text-gray-400 mt-1 block">
-                    {imagenes.length === 0 
-                      ? 'Selecciona entre 3 y 5 imágenes (JPG/PNG)' 
-                      : `${imagenes.length} archivo(s) seleccionado(s)`}
-                  </span>
                 </div>
 
                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 flex justify-between items-center">
                   <div>
-                    <h4 className="font-bold text-blue-900 text-sm">Valor de Tasación</h4>
-                    <p className="text-xs text-blue-700">Calculado automáticamente</p>
+                    <h4 className="font-bold text-blue-900 text-sm">Último resultado guardado</h4>
+                    <p className="text-xs text-blue-700">Procesado por el Mediador</p>
                   </div>
                   <div className="text-right">
                     <span className="text-2xl font-extrabold text-blue-900">
