@@ -6,6 +6,7 @@ import LogIn from './components/LogIn';
 import BusquedaInteligente from './components/BusquedaInteligente'; 
 import RegistroOfertas from './components/RegistroOfertas';
 import GestionCompatibilidad from './components/GestionCompatibilidad';
+import ModuloReputacion from './components/ModuloReputacion';
 
 // Vista de Inicio (Home) - Panel de Bienvenida Comunitario
 function Home() {
@@ -83,7 +84,9 @@ export default function App() {
               <Link to="/catalogo" className="hover:text-blue-300 transition">Buscar Repuestos</Link>
               <Link to="/crear" className="hover:text-blue-300 transition">Publicar Oferta</Link>
               
-              {/* INTERCONEXIÓN INTELIGENTE: Mostrar Matriz solo si es Administrador */}
+              {/* INTERCONEXIÓN: Enlace añadido en la barra de navegación */}
+              <Link to="/reputacion" className="hover:text-blue-300 transition">Reputación</Link>
+              
               {usuarioRol === 'admin' && (
                 <Link to="/matriz" className="text-red-400 border border-red-500/30 px-2 py-0.5 rounded bg-red-950/20 hover:text-red-300 transition">
                   Gestión Compatibilidad (Admin)
@@ -119,6 +122,8 @@ export default function App() {
             <Route path="/crear" element={<RegistroOfertas />} />
             <Route path="/matriz" element={<GestionCompatibilidad />} />
             <Route path="/perfil" element={<PerfilVecinal />} />
+            {/* INTERCONEXIÓN: Ruta registrada */}
+            <Route path="/reputacion" element={<ModuloReputacion />} />
           </Routes>
         </main>
 
