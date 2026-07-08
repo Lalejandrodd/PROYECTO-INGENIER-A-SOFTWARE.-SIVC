@@ -3,7 +3,12 @@ from django.core.exceptions import ValidationError
 from .models import Oferta, Fotografia
 from .services import OfertaService
 
+class FotografiaInline(admin.TabularInline):
+    model = Fotografia
+    extra = 1
+
 class OfertaAdmin(admin.ModelAdmin):
+    inlines = [FotografiaInline]
     list_display = ['id_inventario', 'repuesto', 'usuario', 'valor_puntos', 'estado_oferta', 'fecha_publicacion']
     readonly_fields = ['id_inventario', 'valor_puntos', 'fecha_publicacion']
     

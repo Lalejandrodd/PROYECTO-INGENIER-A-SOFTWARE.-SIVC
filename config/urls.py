@@ -189,3 +189,9 @@ urlpatterns = [
     path('api/vehiculos/', include('apps.vehiculos.urls')),  # listar vehículos
     path('api/chat/', include('apps.chat.urls')),  # iniciar/, enviar/
 ]
+
+from django.conf import settings
+from django.conf.urls.static import static
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

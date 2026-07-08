@@ -141,6 +141,10 @@ PUSHER_CLUSTER = "us2"
 
 import pusher
 
+# MEDIA CONFIGURATION (HU 7 - Registro Visual)
+import os
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Construimos el objeto cliente que tus vistas van a importar
 pusher_client = pusher.Pusher(
     app_id=PUSHER_APP_ID,

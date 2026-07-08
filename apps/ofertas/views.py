@@ -200,6 +200,19 @@ def crear_oferta(request):
             tipo_tasacion = request.POST.get('tipo_tasacion', 'algoritmico') # <- NUEVO
             valor_manual = request.POST.get('valor_manual', 0.0)             # <- NUEVO
             horas_tiempo = request.POST.get('horas', 0.0)                    # <- NUEVO
+            
+            # HU 7 - Extraer imágenes
+            imagenes = request.FILES.getlist('imagenes')
+            import os
+            EXTENSIONES_PERMITIDAS = ['.jpg', '.jpeg', '.png']
+            
+            if len(imagenes) < 3 or len(imagenes) > 5:
+                return JsonResponse({"error": "Debe cargar entre 3 y 5 fotografías como evidencia visual."}, status=400)
+            
+            for imagen in imagenes:
+                ext = os.path.splitext(imagen.name)[1].lower()
+                if ext not in EXTENSIONES_PERMITIDAS:
+                    return JsonResponse({"error": f"Formato inválido en '{imagen.name}'. Solo JPG o PNG."}, status=400)
         else:
             data = json.loads(request.body)
             repuesto_id = data.get('repuesto_id')
@@ -208,6 +221,7 @@ def crear_oferta(request):
             tipo_tasacion = data.get('tipo_tasacion', 'algoritmico') # <- NUEVO
             valor_manual = data.get('valor_manual', 0.0)             # <- NUEVO
             horas_tiempo = data.get('horas', 0.0)                    # <- NUEVO
+            imagenes = []
         
         if not repuesto_id or not rango_horario or not referencia_ubicacion:
             return JsonResponse({"error": "Faltan parámetros requeridos"}, status=400)
@@ -251,11 +265,17 @@ def crear_oferta(request):
         oferta._valor_manual = valor_manual 
         oferta.save()
         
+        # HU 7 - Persistencia de fotografías
+        from apps.ofertas.models import Fotografia
+        for imagen in imagenes:
+            Fotografia.objects.create(oferta=oferta, imagen=imagen)
+        
         return JsonResponse({
             'success': True,
             'message': f'Oferta creada exitosamente usando la modalidad: {tipo_tasacion}',
             'id_inventario': str(oferta.id_inventario),
-            'valor_puntos': oferta.valor_puntos
+            'valor_puntos': oferta.valor_puntos,
+            'cantidad_fotos': len(imagenes)
         }, status=201)
         
     except Exception as e:

@@ -11,7 +11,7 @@ try:
 except ImportError:
     pusher = None
 from django.conf import settings
-
+import os
 # Inicializamos el cliente de pusher solo si la librería está disponible
 pusher_client = None
 if pusher is not None:
@@ -192,6 +192,18 @@ class Oferta(models.Model):
                 print(f"Advertencia de Pusher (No interrumpe el flujo): {e}")
 
 
+def validar_extension_imagen(value):
+    """
+    HU 7 - Escenario 2: Restricción de formatos de archivo.
+    Solo se admiten archivos con extensión .jpg, .jpeg o .png.
+    """
+    ext = os.path.splitext(value.name)[1].lower()
+    extensiones_permitidas = ['.jpg', '.jpeg', '.png']
+    if ext not in extensiones_permitidas:
+        raise ValidationError(
+            'Formato no permitido. Solo se admiten archivos JPG o PNG.'
+        )
+
 class Fotografia(models.Model):
     """
     Maneja las evidencias visuales del repuesto.
@@ -201,7 +213,12 @@ class Fotografia(models.Model):
         related_name='fotos', 
         on_delete=models.CASCADE
     )
-    url_imagen = models.URLField()
+    imagen = models.FileField(
+        upload_to='ofertas/fotografias/',
+        validators=[validar_extension_imagen],
+        help_text='Solo se admiten archivos JPG o PNG.',
+        null=True, blank=True
+    )
     fecha_carga = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
