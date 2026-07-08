@@ -1,5 +1,7 @@
+import os
 import uuid
 from django.db import models
+from django.core.exceptions import ValidationError
 from apps.repuestos.models import Repuesto 
 from apps.transacciones.services import TasacionService 
 
@@ -85,17 +87,41 @@ class Oferta(models.Model):
         # Guardado final en la BD vía ORM
         super(Oferta, self).save(*args, **kwargs)
 
+def validar_extension_imagen(value):
+    """
+    HU 7 - Escenario 2: Restricción de formatos de archivo.
+    Solo se admiten archivos con extensión .jpg, .jpeg o .png.
+    """
+    ext = os.path.splitext(value.name)[1].lower()
+    extensiones_permitidas = ['.jpg', '.jpeg', '.png']
+    if ext not in extensiones_permitidas:
+        raise ValidationError(
+            'Formato no permitido. Solo se admiten archivos JPG o PNG.'
+        )
+
+
 class Fotografia(models.Model):
     """
+    HU 7: Registro Visual de Estado de las Piezas.
     Maneja las evidencias visuales del repuesto.
+    Cada imagen se vincula de forma persistente a través del ORM
+    al objeto Oferta correspondiente (Integridad Referencial).
     """
     oferta = models.ForeignKey(
         Oferta, 
         related_name='fotos', 
         on_delete=models.CASCADE
     )
-    url_imagen = models.URLField()
+    imagen = models.FileField(
+        upload_to='ofertas/fotografias/',
+        validators=[validar_extension_imagen],
+        help_text='Solo se admiten archivos JPG o PNG.'
+    )
     fecha_carga = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Fotografía'
+        verbose_name_plural = 'Fotografías'
 
     def __str__(self):
         return f"Foto para {self.oferta.id_inventario}"
