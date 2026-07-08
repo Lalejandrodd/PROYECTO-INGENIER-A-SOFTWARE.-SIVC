@@ -5,6 +5,7 @@ import BusquedaInteligente from './components/BusquedaInteligente';
 import RegistroOfertas from './components/RegistroOfertas';
 import RegistroUsuario from './components/RegistroUsuario';
 import LogIn from './components/LogIn';
+import ModuloReputacion from './components/ModuloReputacion'; 
 import axios from 'axios';
 import APP_CONFIG from './config';
 import logo from './assets/logo.svg';  
@@ -26,10 +27,10 @@ function App() {
           headers: { 'X-Session-ID': sessionid || '' },
           withCredentials: true
         });
-       
+        
         if (response.data.authenticated) {
           setUsuario({
-            id: response.data.user_id, // 👈 AGREGAMOS ESTA LÍNEA (Asegúrate de que tu Django retorne user_id)
+            id: response.data.user_id,
             username: response.data.username,
             is_superuser: response.data.is_superuser,
             is_authenticated: true
@@ -110,6 +111,11 @@ function App() {
           <button onClick={() => setVistaActual('transacciones')} className={`px-4 py-2 rounded transition ${vistaActual === 'transacciones' ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}>
             Transacciones
           </button>
+          
+          <button onClick={() => setVistaActual('reputacion')} className={`px-4 py-2 rounded transition ${vistaActual === 'reputacion' ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}>
+             Reputación
+          </button>
+
           <button onClick={() => setVistaActual('urgencias')} className={`px-4 py-2 rounded transition ${vistaActual === 'urgencias' ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}>
             🚨 Urgencias Comunitarias
           </button>
@@ -125,6 +131,9 @@ function App() {
         {vistaActual === 'registrar' && <RegistroOfertas />}
         {vistaActual === 'transacciones' && <PanelTransacciones />}
         {vistaActual === 'urgencias' && <UrgenciasModule miUsuarioId={usuario?.id} />}
+        
+        {/* 3. RENDERIZAR EL COMPONENTE SEGÚN EL ESTADO */}
+        {vistaActual === 'reputacion' && <ModuloReputacion miUsuarioId={usuario?.id} />}
       </div>
     </div>
   );
