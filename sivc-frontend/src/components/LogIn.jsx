@@ -39,17 +39,24 @@ export default function LogIn({ onLoginSubmit, onRegistrarse }) {
 
       const data = await response.json();
 
+      // Al recibir data en LogIn.jsx tras el fetch:
       if (response.ok && data.success) {
-        localStorage.setItem('sessionid', data.sessionid);
+        // Guardará el token JWT en el storage bajo el nombre de 'sessionid'
+        const tokenLargoJWT = data.sessionid;
+        
+        localStorage.setItem('sessionid', tokenLargoJWT); 
         localStorage.setItem('user_id', data.user_id);
+        console.log("✅ ¡Inicio de sesión correcto! Token JWT guardado:", tokenLargoJWT);
         if (onLoginSubmit) {
           onLoginSubmit({
+            id: data.user_id,
             username: data.username,
             is_superuser: data.is_superuser,
             is_authenticated: true
           });
         }
-      } else {
+      }
+      else {
         setError(data.error || 'Credenciales inválidas');
       }
     } catch (err) {

@@ -2,6 +2,28 @@ import uuid
 from django.db import models
 from apps.repuestos.models import Repuesto 
 from apps.transacciones.services import TasacionService 
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from apps.usuarios.models import Vecino, Admin
+from apps.vehiculos.models import Vehiculo
+try:
+    import pusher
+except ImportError:
+    pusher = None
+from django.conf import settings
+
+# Inicializamos el cliente de pusher solo si la librería está disponible
+pusher_client = None
+if pusher is not None:
+    try:
+        pusher_client = pusher.Pusher(
+            app_id=getattr(settings, 'PUSHER_APP_ID', None),
+            key=getattr(settings, 'PUSHER_KEY', None),
+            secret=getattr(settings, 'PUSHER_SECRET', None),
+            cluster=getattr(settings, 'PUSHER_CLUSTER', None)
+        )
+    except Exception:
+        pusher_client = None
 
 class MatrizCompatibilidad(models.Model):
     repuesto = models.ForeignKey('repuestos.Repuesto', on_delete=models.CASCADE)
@@ -138,32 +160,36 @@ class Oferta(models.Model):
         return f"Oferta: {self.repuesto.nombre_pieza} - {self.valor_puntos} pts ({self.get_tipo_tasacion_display()})"
 
     def save(self, *args, **kwargs):
-        """
-        Sobrescritura del método save utilizando el Intermediario de Valor.
-        """
-        from apps.ofertas.services import OfertaService  
-        from apps.transacciones.gestores.valor_mediator import gestor_valor # <- IMPORTACIÓN NUEVA
+        # 1. Forzar validaciones de negocio primero
+        self.full_clean()
         
-        # Validar el límite diario de publicaciones por usuario (HU 11)
-        OfertaService.validar_limite_diario(self.usuario)
-
-        # Obtener el año del primer vehículo compatible
-        vehiculo = self.repuesto.compatibilidad.first()
-        anio_ref = vehiculo.anio if vehiculo else 2020
+        # 2. Guardar físicamente el registro en la base de datos de Django
+        es_nuevo = self.pk is None  # Verificamos si se está creando por primera vez
+        super().save(*args, **kwargs)
         
-        # Recolectamos todos los datos que cualquier estrategia pueda necesitar
-        datos_contexto = {
-            'estado_fisico': self.repuesto.estado_fisico,
-            'categoria': self.repuesto.nombre_pieza,
-            'anio_vehiculo': anio_ref,
-            'valor_manual': getattr(self, '_valor_manual', 0.0), # Por si se pasa en memoria
-        }
-        
-        # EL INTERMEDIARIO DELEGA LA ESTRATEGIA (Md)
-        # Transacciones y Ofertas no saben qué algoritmo corre por detrás
-        self.valor_puntos = gestor_valor.procesar_valor(self.tipo_tasacion, datos_contexto)
-        
-        super(Oferta, self).save(*args, **kwargs)
+        # 3. Disparador de Pusher: Solo notificamos si es una urgencia NUEVA y ACTIVA
+        if es_nuevo and self.activa:
+            try:
+                pusher_client = pusher.Pusher(
+                    app_id=settings.PUSHER_APP_ID,
+                    key=settings.PUSHER_KEY,
+                    secret=settings.PUSHER_SECRET,
+                    cluster=settings.PUSHER_CLUSTER,
+                    ssl=True
+                )
+                
+                # Lanzamos el evento al canal de la comunidad
+                pusher_client.trigger('canal-comunidad', 'nueva-urgencia', {
+                    'id_urgencia': self.id_urgencia,
+                    'pieza': self.nombre_pieza_requerida,
+                    'vehiculo': f"{self.vehiculo.marca} {self.vehiculo.modelo}",
+                    'recompensa': self.puntos_recompensa_extra,
+                    'vecino': self.vecino.username
+                })
+            except Exception as e:
+                # Usamos un try/except para que si no hay internet o fallan las llaves de Pusher,
+                # el sistema no le tire un error 500 al usuario y al menos guarde el registro.
+                print(f"Advertencia de Pusher (No interrumpe el flujo): {e}")
 
 
 class Fotografia(models.Model):
@@ -180,3 +206,112 @@ class Fotografia(models.Model):
 
     def __str__(self):
         return f"Foto para {self.oferta.id_inventario}"
+    
+class Urgencia(models.Model):
+    id_urgencia = models.AutoField(primary_key=True)
+    
+    # Relaciones (Llaves Foráneas)
+    
+    vecino = models.ForeignKey(Vecino, on_delete=models.CASCADE, verbose_name="Vecino Afectado")
+    vehiculo = models.ForeignKey(Vehiculo, on_delete=models.CASCADE, verbose_name="Vehículo Accidentado")
+    
+    # Campos solicitados por el plan
+    nombre_pieza_requerida = models.CharField(max_length=150, verbose_name="Pieza Necesitada")
+    descripcion_contexto = models.TextField(verbose_name="Descripción del Contexto / Situación")
+    fecha_hora_publicacion = models.DateTimeField(default=timezone.now, verbose_name="Fecha y Hora de Publicación")
+    puntos_recompensa_extra = models.FloatField(verbose_name="Puntos de Recompensa Extra")
+    activa = models.BooleanField(default=True, verbose_name="¿Sigue Activa?")
+
+    vecino_postulado = models.ForeignKey(
+        'usuarios.Vecino', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='urgencias_postuladas'
+    )
+
+    estado_tramite = models.CharField(
+        max_length=20,
+        choices=[
+            ('libre', 'Libre'),               
+            ('revision', 'En Revisión'),      
+            ('completada', 'Completada'),    
+        ],
+        default='libre'
+    )
+    
+    def clean(self):
+        super().clean()
+        
+        # 1. Validación de la Regla de Negocio: Cuota Máxima de 1 Urgencia Activa
+        # Si es un registro nuevo (self.pk es None) y ya tiene otra urgencia activa, lanzamos error.
+        if self.pk is None and self.activa:
+            urgencias_activas = Urgencia.objects.filter(vecino=self.vecino, activa=True).exists()
+            if urgencias_activas:
+                raise ValidationError({
+                    'activa': "Regla de Negocio Incumplida: Solo puedes tener un anuncio de emergencia activo a la vez."
+                })
+        
+        # 2. Validación del Incentivo (Teoría de Juegos)
+        if self.puntos_recompensa_extra is not None and self.puntos_recompensa_extra <= 0:
+            raise ValidationError({
+                'puntos_recompensa_extra': "Para publicar una urgencia debes ofrecer un incentivo de puntos extra mayor a cero."
+            })
+
+    def save(self, *args, **kwargs):
+        # Obligamos a ejecutar la lógica de validación de clean() antes de guardar en la BD
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def postular_colaborador(self, vecino_b):
+        """El Vecino B se ofrece a ayudar"""
+        if self.estado_tramite != 'libre' or not self.activa:
+            raise ValidationError("Esta urgencia ya no está disponible.")
+        # 👇 CORREGIDO: Se cambia self.vecino_creador por self.vecino
+        if self.vecino == vecino_b:
+            raise ValidationError("No puedes postularte a tu propia urgencia.")
+            
+        self.vecino_postulado = vecino_b
+        self.estado_tramite = 'revision'
+        self.save()
+
+    def aceptar_solucion(self):
+        """El Vecino A acepta la ayuda y se transfieren los puntos"""
+        if self.estado_tramite != 'revision' or not self.vecino_postulado:
+            raise ValidationError("No hay ninguna postulación pendiente para aceptar.")
+        
+        # 👇 CORREGIDO: Se cambia self.vecino_creador por self.vecino
+        vecino_a = self.vecino
+        vecino_b = self.vecino_postulado
+        
+        # 👇 CORREGIDO: Se cambia self.valor_puntos por self.puntos_recompensa_extra
+        puntos_a_transferir = self.puntos_recompensa_extra 
+
+        # Validación de saldo
+        if vecino_a.puntos < puntos_a_transferir:
+            raise ValidationError("No tienes puntos suficientes para cerrar esta urgencia.")
+
+        # Transferencia de puntos
+        vecino_a.puntos -= puntos_a_transferir
+        vecino_b.puntos += puntos_a_transferir
+        
+        # Guardar saldos de los vecinos
+        vecino_a.save()
+        vecino_b.save()
+
+        # Cerrar trámite de la urgencia
+        self.estado_tramite = 'completada'
+        self.activa = False
+        self.save()
+
+    def rechazar_solucion(self):
+        """El Vecino A rechaza la ayuda y la urgencia vuelve a estar libre"""
+        if self.estado_tramite != 'revision':
+            raise ValidationError("No hay ninguna postulación activa para rechazar.")
+            
+        self.vecino_postulado = None
+        self.estado_tramite = 'libre'
+        self.save()
+
+    def __str__(self):
+        return f"URGENCIA: {self.nombre_pieza_requerida} - {self.vecino.username} ({'ACTIVA' if self.activa else 'RESUELTA'})"

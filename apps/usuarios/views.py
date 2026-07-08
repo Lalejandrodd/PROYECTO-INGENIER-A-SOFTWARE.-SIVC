@@ -23,7 +23,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['role'] = user_role
         data['email'] = user.email
         data['nombre_completo'] = user.nombre_completo # Campo personalizado de tu modelo
-        
+        data['success'] = True
+        data['user_id'] = user.id                 
+        data['username'] = user.username           
+        data['is_superuser'] = user.is_superuser   
+        data['sessionid'] = data['access']
+
         return data
 
 class CustomTokenObtainPairView(TokenObtainPairView):

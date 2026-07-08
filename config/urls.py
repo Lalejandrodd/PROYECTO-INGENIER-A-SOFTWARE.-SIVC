@@ -116,6 +116,28 @@ def registrar_usuario(request):
 # ============================================
 # ENDPOINT DE VERIFICACIÓN DE SESIÓN
 # ============================================
+# @csrf_exempt
+# def verificar_sesion(request):
+#     session_id = request.headers.get('X-Session-ID')
+    
+#     if session_id:
+#         from django.contrib.sessions.models import Session
+#         try:
+#             session = Session.objects.get(session_key=session_id)
+#             user_id = session.get_decoded().get('_auth_user_id')
+#             if user_id:
+#                 from apps.usuarios.models import Usuario
+#                 user = Usuario.objects.get(id=user_id)
+#                 return JsonResponse({
+#                     'authenticated': True,
+#                     'username': user.username,
+#                     'is_superuser': user.is_superuser
+#                 })
+#         except Exception as e:
+#             print(f"Error al recuperar sesión: {e}")
+    
+#     return JsonResponse({'authenticated': False}, status=401)
+
 @csrf_exempt
 def verificar_sesion(request):
     session_id = request.headers.get('X-Session-ID')
@@ -137,8 +159,6 @@ def verificar_sesion(request):
             print(f"Error al recuperar sesión: {e}")
     
     return JsonResponse({'authenticated': False}, status=401)
-
-
 # ============================================
 # ENDPOINT DE LOGOUT
 # ============================================

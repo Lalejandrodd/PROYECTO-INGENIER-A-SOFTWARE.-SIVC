@@ -107,6 +107,20 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Permitir explícitamente la cabecera personalizada que usa tu equipo
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-session-id',  # <-- ¡ESTA ES LA LÍNEA MÁGICA!
+]
+
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -118,3 +132,20 @@ SESSION_COOKIE_HTTPONLY = True
 
 CSRF_COOKIE_SAMESITE = 'None'
 CSRF_COOKIE_SECURE = False
+
+# CONFIGURACIÓN DE PUSHER PARA TIEMPO REAL (HU6)
+PUSHER_APP_ID = "2169223"
+PUSHER_KEY = "a1b4e5e51a38a125b9e9"
+PUSHER_SECRET = "4c4f4cab6394c81eb619"
+PUSHER_CLUSTER = "us2" 
+
+import pusher
+
+# Construimos el objeto cliente que tus vistas van a importar
+pusher_client = pusher.Pusher(
+    app_id=PUSHER_APP_ID,
+    key=PUSHER_KEY,
+    secret=PUSHER_SECRET,
+    cluster=PUSHER_CLUSTER,
+    ssl=True
+)

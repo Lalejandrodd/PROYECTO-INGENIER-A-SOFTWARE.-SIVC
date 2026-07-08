@@ -22,3 +22,12 @@ class OfertaAdmin(admin.ModelAdmin):
 
 admin.site.register(Oferta, OfertaAdmin)
 admin.site.register(Fotografia)
+
+# from django.contrib import admin
+# from .models import Urgencia
+
+# @admin.register(Urgencia)
+# class UrgenciaAdmin(admin.ModelAdmin):
+#     list_display = ('id_urgencia', 'vecino', 'nombre_pieza_requerida', 'puntos_recompensa_extra', 'activa', 'fecha_hora_publicacion')
+#     list_filter = ('activa', 'fecha_hora_publicacion')
+#     search_fields = ('nombre_pieza_requerida', 'vecino__username')

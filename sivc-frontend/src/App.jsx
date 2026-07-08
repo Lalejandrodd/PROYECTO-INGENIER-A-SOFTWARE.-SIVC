@@ -8,6 +8,7 @@ import LogIn from './components/LogIn';
 import axios from 'axios';
 import APP_CONFIG from './config';
 import logo from './assets/logo.svg';  
+import { UrgenciasModule } from './components/UrgenciasModule';
 
 function App() {
   const [usuario, setUsuario] = useState(null);
@@ -25,8 +26,10 @@ function App() {
           headers: { 'X-Session-ID': sessionid || '' },
           withCredentials: true
         });
+       
         if (response.data.authenticated) {
           setUsuario({
+            id: response.data.user_id, // 👈 AGREGAMOS ESTA LÍNEA (Asegúrate de que tu Django retorne user_id)
             username: response.data.username,
             is_superuser: response.data.is_superuser,
             is_authenticated: true
@@ -107,6 +110,9 @@ function App() {
           <button onClick={() => setVistaActual('transacciones')} className={`px-4 py-2 rounded transition ${vistaActual === 'transacciones' ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}>
             Transacciones
           </button>
+          <button onClick={() => setVistaActual('urgencias')} className={`px-4 py-2 rounded transition ${vistaActual === 'urgencias' ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}>
+            🚨 Urgencias Comunitarias
+          </button>
           <button onClick={handleLogout} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white transition">
             Salir
           </button>
@@ -118,6 +124,7 @@ function App() {
         {vistaActual === 'buscar' && <BusquedaInteligente />}
         {vistaActual === 'registrar' && <RegistroOfertas />}
         {vistaActual === 'transacciones' && <PanelTransacciones />}
+        {vistaActual === 'urgencias' && <UrgenciasModule miUsuarioId={usuario?.id} />}
       </div>
     </div>
   );
