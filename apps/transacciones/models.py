@@ -33,6 +33,16 @@ class Transaccion(models.Model):
         related_name='transacciones'
     )
 
+    completada = models.BooleanField(default=False)
+
+    acuerdo = models.ForeignKey(
+        'AcuerdoIntercambio',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='transacciones'
+    )
+
     class Meta:
         verbose_name = "Transacción"
         verbose_name_plural = "Transacciones"
@@ -153,6 +163,16 @@ class AcuerdoIntercambio(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
 
+    cancelacion_solicitada_por = models.ForeignKey(
+        Vecino, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='cancelaciones_solicitadas'
+    )
+
+    estado_anterior = models.CharField(max_length=20, blank=True, null=True)
+
     class Meta:
         unique_together = ['oferta', 'ofertante', 'demandante']
         verbose_name = "Acuerdo de Intercambio"
@@ -160,3 +180,15 @@ class AcuerdoIntercambio(models.Model):
 
     def __str__(self):
         return f"Acuerdo {self.oferta.repuesto.nombre_pieza} - {self.estado}"
+    
+class Calificacion(models.Model):
+    id_calificacion = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    transaccion = models.ForeignKey(Transaccion, on_delete=models.CASCADE, related_name='calificaciones')
+    calificador = models.ForeignKey(Vecino, on_delete=models.PROTECT, related_name='calificaciones_hechas')
+    calificado = models.ForeignKey(Vecino, on_delete=models.PROTECT, related_name='calificaciones_recibidas')
+    puntuacion = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)])
+    comentario = models.TextField(blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['transaccion', 'calificador']  # Un usuario solo califica una vez por transacción

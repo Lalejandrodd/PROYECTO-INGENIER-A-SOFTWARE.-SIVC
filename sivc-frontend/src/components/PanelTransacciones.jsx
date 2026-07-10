@@ -17,8 +17,11 @@ export default function PanelTransacciones() {
   const [error, setError] = useState('');
   const [conversaciones, setConversaciones] = useState([]);
   const [chatAbierto, setChatAbierto] = useState(null);
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState([]);
+  const [transaccionesPendientes, setTransaccionesPendientes] = useState([]);
+  const [acuerdos, setAcuerdos] = useState([]); // Todos los acuerdos activos del usuario
 
-  // Función para cargar conversaciones activas
+  // Cargar conversaciones (chat)
   const cargarConversaciones = async () => {
     try {
       const sessionid = localStorage.getItem('sessionid');
@@ -32,19 +35,135 @@ export default function PanelTransacciones() {
     }
   };
 
-  // QUITAR DESPUÉS ESTO ES PARA PROBAR EL CHAT CON UN ACUERDO DE INTERCAMBIO SIMULADO (HU4)
-  const crearAcuerdoPrueba = async () => {
+  // Cargar solicitudes pendientes (para el ofertante)
+  const cargarSolicitudesPendientes = async () => {
     try {
       const sessionid = localStorage.getItem('sessionid');
-      await axios.post('/api/chat/crear-acuerdo-prueba/', {}, {
+      const response = await axios.get('/api/solicitudes-pendientes/', {
         headers: { 'X-Session-ID': sessionid || '' },
         withCredentials: true
       });
-      alert('Acuerdo de prueba creado. Recarga la página.');
+      setSolicitudesPendientes(response.data || []);
+    } catch (err) {
+      console.error('Error cargando solicitudes:', err);
+    }
+  };
+
+  // Cargar transacciones pendientes de confirmar (para el demandante)
+  const cargarTransaccionesPendientes = async () => {
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      const response = await axios.get('/api/transacciones-para-confirmar/', {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      setTransaccionesPendientes(response.data || []);
+    } catch (err) {
+      console.error('Error cargando transacciones pendientes:', err);
+    }
+  };
+
+  // Cargar todos los acuerdos activos del usuario (para cancelaciones)
+  const cargarAcuerdos = async () => {
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      const response = await axios.get('/api/mis-acuerdos/', {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      setAcuerdos(response.data || []);
+    } catch (err) {
+      console.error('Error cargando acuerdos:', err);
+    }
+  };
+
+  // Aceptar un trueque (oferta pendiente)
+  const aceptarSolicitud = async (acuerdoId) => {
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      await axios.post(`/api/aceptar/${acuerdoId}/`, {}, {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      alert('✅ Intercambio aceptado. Se ha habilitado el chat.');
+      // Recargar listas
+      cargarSolicitudesPendientes();
+      cargarConversaciones();
+      cargarAcuerdos();
+    } catch (err) {
+      const mensaje = err.response?.data?.error || 'Error al aceptar el intercambio';
+      alert('❌ ' + mensaje);
+    }
+  };
+
+  // Confirmar recepción (demandante)
+  const confirmarRecepcion = async (transaccionId) => {
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      await axios.post(`/api/confirmar-recepcion/${transaccionId}/`, {}, {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      alert('✅ Recepción confirmada. Puntos transferidos al ofertante.');
+      // Recargar listas
+      cargarTransaccionesPendientes();
+      cargarConversaciones();
+      cargarAcuerdos();
+    } catch (err) {
+      const mensaje = err.response?.data?.error || 'Error al confirmar recepción';
+      alert('❌ ' + mensaje);
+    }
+  };
+
+  // Solicitar cancelación (cualquier parte)
+  const solicitarCancelacion = async (acuerdoId) => {
+    if (!window.confirm('¿Estás seguro de que deseas cancelar este trueque?')) return;
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      await axios.post(`/api/solicitar-cancelacion/${acuerdoId}/`, {}, {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      alert('✅ Solicitud de cancelación enviada. Espera la confirmación de la otra parte.');
+      cargarAcuerdos();
+    } catch (err) {
+      const mensaje = err.response?.data?.error || 'Error al solicitar cancelación';
+      alert('❌ ' + mensaje);
+    }
+  };
+
+  // Confirmar cancelación (la otra parte)
+  const confirmarCancelacion = async (acuerdoId) => {
+    if (!window.confirm('¿Confirmar la cancelación de este trueque?')) return;
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      await axios.post(`/api/confirmar-cancelacion/${acuerdoId}/`, {}, {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      alert('✅ Trueque cancelado exitosamente.');
+      cargarAcuerdos();
       cargarConversaciones();
     } catch (err) {
-      console.error(err);
-      alert('Error al crear acuerdo de prueba');
+      const mensaje = err.response?.data?.error || 'Error al confirmar cancelación';
+      alert('❌ ' + mensaje);
+    }
+  };
+
+  // Rechazar cancelación (la otra parte)
+  const rechazarCancelacion = async (acuerdoId) => {
+    if (!window.confirm('¿Rechazar la solicitud de cancelación?')) return;
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      await axios.post(`/api/rechazar-cancelacion/${acuerdoId}/`, {}, {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      alert('✅ Cancelación rechazada. El trueque continúa.');
+      cargarAcuerdos();
+    } catch (err) {
+      const mensaje = err.response?.data?.error || 'Error al rechazar cancelación';
+      alert('❌ ' + mensaje);
     }
   };
 
@@ -54,15 +173,28 @@ export default function PanelTransacciones() {
         const sessionid = localStorage.getItem('sessionid');
         const headers = { 'X-Session-ID': sessionid || '' };
         
-        const [historialRes, rankingRes, conversacionesRes] = await Promise.all([
+        const [
+          historialRes,
+          rankingRes,
+          conversacionesRes,
+          solicitudesRes,
+          transaccionesPendientesRes,
+          acuerdosRes
+        ] = await Promise.all([
           axios.get('/api/historial/', { headers, withCredentials: true }),
           axios.get('/api/ranking/', { withCredentials: true }),
-          axios.get('/api/chat/conversaciones/', { headers, withCredentials: true })
+          axios.get('/api/chat/conversaciones/', { headers, withCredentials: true }),
+          axios.get('/api/solicitudes-pendientes/', { headers, withCredentials: true }),
+          axios.get('/api/transacciones-para-confirmar/', { headers, withCredentials: true }),
+          axios.get('/api/mis-acuerdos/', { headers, withCredentials: true })
         ]);
         
         setHistorial(historialRes.data);
         setRanking(rankingRes.data.ranking || []);
         setConversaciones(conversacionesRes.data.conversaciones || []);
+        setSolicitudesPendientes(solicitudesRes.data || []);
+        setTransaccionesPendientes(transaccionesPendientesRes.data || []);
+        setAcuerdos(acuerdosRes.data || []);
       } catch (err) {
         console.error('Error:', err);
         if (err.response?.status === 401) {
@@ -82,6 +214,9 @@ export default function PanelTransacciones() {
   if (!historial) return <div className="p-6 text-center">No hay datos disponibles</div>;
 
   const rankingActual = RANKING_LABELS[historial.ranking] || RANKING_LABELS[1];
+
+  // Filtrar acuerdos que no estén completados o cancelados
+  const acuerdosActivos = acuerdos.filter(a => a.estado !== 'completado' && a.estado !== 'cancelado');
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen space-y-8 font-sans">
@@ -114,7 +249,7 @@ export default function PanelTransacciones() {
         </div>
       </div>
 
-      {/* Sección de historial y ranking */}
+      {/* Historial y Ranking */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
           <div className="flex justify-between items-center border-b border-gray-100 pb-3">
@@ -181,18 +316,133 @@ export default function PanelTransacciones() {
         </div>
       </div>
 
-      {/* SECCIÓN: MIS INTERCAMBIOS ACTIVOS (HU4) */}
+      {/* SECCIÓN: MIS ACUERDOS ACTIVOS (con opción de cancelar) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-gray-800">Mis Intercambios Activos</h2>
-          {/* Botón opcional para crear acuerdo de prueba (eliminar en producción) */}
-          <button
-            onClick={crearAcuerdoPrueba}
-            className="bg-gray-300 hover:bg-gray-400 text-xs px-2 py-1 rounded"
-          >
-            Probar Chat (Admin)
-          </button>
+        <h2 className="text-lg font-bold text-gray-800 mb-4">🔄 Mis Intercambios Activos</h2>
+        {acuerdosActivos.length === 0 ? (
+          <p className="text-gray-400 text-sm">No hay intercambios activos.</p>
+        ) : (
+          <div className="space-y-4">
+            {acuerdosActivos.map((acuerdo) => {
+              const userId = parseInt(localStorage.getItem('user_id') || '0');
+              const esOfertante = acuerdo.ofertante_id === userId;
+              const esDemandante = acuerdo.demandante_id === userId;
+              const otraParte = esOfertante ? acuerdo.demandante_nombre : acuerdo.ofertante_nombre;
+
+              return (
+                <div key={acuerdo.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-medium text-gray-800">{acuerdo.repuesto}</p>
+                      <p className="text-xs text-gray-500">
+                        {esOfertante ? 'Ofreciste' : 'Solicitaste'} a <strong>{otraParte}</strong>
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Estado: <span className={`font-semibold ${acuerdo.estado === 'aceptado' ? 'text-green-600' : 'text-amber-600'}`}>{acuerdo.estado}</span>
+                      </p>
+                      {acuerdo.estado === 'cancelacion_pendiente' && (
+                        <p className="text-xs text-red-500 mt-1">⚠️ Cancelación solicitada por la otra parte</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {/* Aceptar trueque (solo ofertante cuando está pendiente) */}
+                      {acuerdo.estado === 'pendiente' && esOfertante && (
+                        <button
+                          onClick={() => aceptarSolicitud(acuerdo.id)}
+                          className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded"
+                        >
+                          Aceptar Trueque
+                        </button>
+                      )}
+
+                      {/* Cancelación pendiente: mostrar botones a la otra parte */}
+                      {acuerdo.estado === 'cancelacion_pendiente' && acuerdo.cancelacion_solicitada_por && acuerdo.cancelacion_solicitada_por !== userId && (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => confirmarCancelacion(acuerdo.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1 rounded"
+                          >
+                            Confirmar Cancelación
+                          </button>
+                          <button
+                            onClick={() => rechazarCancelacion(acuerdo.id)}
+                            className="bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-1 rounded"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Botón solicitar cancelación (disponible para ambas partes en pendiente o aceptado, si no hay solicitud pendiente) */}
+                      {acuerdo.estado !== 'cancelacion_pendiente' && acuerdo.estado !== 'completado' && (
+                        <button
+                          onClick={() => solicitarCancelacion(acuerdo.id)}
+                          className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded"
+                        >
+                          Solicitar Cancelación
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Solicitudes Pendientes (para el ofertante) */}
+      {solicitudesPendientes.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-amber-200 p-6">
+          <h2 className="text-lg font-bold text-amber-700 mb-4">📩 Solicitudes de Trueque Pendientes</h2>
+          <div className="space-y-3">
+            {solicitudesPendientes.map(s => (
+              <div key={s.id} className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-100">
+                <div>
+                  <p className="font-medium">{s.repuesto}</p>
+                  <p className="text-xs text-gray-500">Solicitado por <strong>{s.demandante_nombre}</strong> • {s.fecha}</p>
+                </div>
+                <button
+                  onClick={() => aceptarSolicitud(s.id)}
+                  className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-1.5 rounded"
+                >
+                  Aceptar Trueque
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
+      )}
+
+      {/* Transacciones pendientes de confirmar (demandante) */}
+      {transaccionesPendientes.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-6">
+          <h2 className="text-lg font-bold text-blue-700 mb-4">📦 Repuestos Recibidos – Confirmar Recepción</h2>
+          <div className="space-y-3">
+            {transaccionesPendientes.map(t => (
+              <div key={t.id_transaccion} className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-100">
+                <div>
+                  <p className="font-medium">{t.repuesto}</p>
+                  <p className="text-xs text-gray-500">
+                    De: <strong>{t.ofertante_nombre}</strong> • {t.fecha}
+                  </p>
+                  <p className="text-xs text-gray-500">Puntos a transferir: <strong>{t.puntos} pts</strong></p>
+                </div>
+                <button
+                  onClick={() => confirmarRecepcion(t.id_transaccion)}
+                  className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-1.5 rounded"
+                >
+                  Confirmar Recepción
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Conversaciones activas (chat) */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h2 className="text-lg font-bold text-gray-800 mb-4">💬 Mis Conversaciones Activas</h2>
         {conversaciones.length === 0 ? (
           <p className="text-gray-400 text-sm">No hay conversaciones activas.</p>
         ) : (

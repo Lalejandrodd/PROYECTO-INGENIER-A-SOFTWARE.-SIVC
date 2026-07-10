@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // <-- Importamos axios
+import axios from 'axios';
 
-export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
+export default function BuscadorCatalogo() {
   // Estados para los filtros del formulario
   const [marca, setMarca] = useState('');
   const [modelo, setModelo] = useState('');
@@ -13,11 +13,37 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
+  // Estado para el saldo real del usuario (HU9)
+  const [saldoUsuario, setSaldoUsuario] = useState(0);
+  const [cargandoSaldo, setCargandoSaldo] = useState(true);
+
+  // Obtener saldo real del usuario autenticado
+  useEffect(() => {
+    const obtenerSaldo = async () => {
+      try {
+        const sessionid = localStorage.getItem('sessionid');
+        const response = await axios.get('/api/historial/', {
+          headers: { 'X-Session-ID': sessionid || '' },
+          withCredentials: true
+        });
+        if (response.data && response.data.saldo_actual !== undefined) {
+          setSaldoUsuario(response.data.saldo_actual);
+        }
+      } catch (err) {
+        console.error('Error obteniendo saldo:', err);
+        // Si no está autenticado, usar valor por defecto
+        setSaldoUsuario(0);
+      } finally {
+        setCargandoSaldo(false);
+      }
+    };
+    obtenerSaldo();
+  }, []);
+
   // Función que realiza la llamada al backend de Django
   const realizarBusqueda = async (e) => {
     if (e) e.preventDefault();
 
-    // Validación previa local, verifica que esten los 3 datos necesarios :p
     if (!marca || !modelo || !anio) {
       setError('Para buscar, debes ingresar obligatoriamente Marca, Modelo y Año del vehículo.');
       return;
@@ -27,16 +53,9 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
     setCargando(true);
 
     try {
-      // aqui se envia la petición GET con los Query Params estructurados
       const response = await axios.get('/api/buscar/', {
-        params: {
-          marca: marca,
-          modelo: modelo,
-          anio: anio
-        }
+        params: { marca, modelo, anio }
       });
-
-      // se guarda el array de resultados devuelto por Django
       setPiezas(response.data);
     } catch (err) {
       console.error("Error al consultar el catálogo:", err);
@@ -46,12 +65,49 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
     }
   };
 
-  // HU 9: Filtro secundario de capacidad económica 
+  // HU4 - Solicitar trueque
+  const solicitarTrueque = async (ofertaId) => {
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      if (!sessionid) {
+        alert('Debes iniciar sesión para solicitar un trueque');
+        return;
+      }
+
+      const response = await axios.post('/api/solicitar/', 
+        { oferta_id: ofertaId },
+        {
+          headers: { 'X-Session-ID': sessionid || '' },
+          withCredentials: true
+        }
+      );
+
+      if (response.data.success) {
+        alert('✅ Solicitud de trueque enviada al ofertante. Espera su respuesta.');
+      } else {
+        alert(response.data.error || 'Error al solicitar trueque');
+      }
+    } catch (err) {
+      console.error('Error al solicitar trueque:', err);
+      const mensaje = err.response?.data?.error || 'Error de conexión al solicitar trueque';
+      alert('❌ ' + mensaje);
+    }
+  };
+
+  // HU 9: Filtro secundario de capacidad económica (usando saldo real)
   const piezasFiltradas = piezas.filter(pieza => {
-    
     const coincideSaldo = soloAsequibles ? pieza.valor_puntos <= saldoUsuario : true;
     return coincideSaldo;
   });
+
+  // Mostrar cargando mientras se obtiene el saldo
+  if (cargandoSaldo) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-gray-500">Cargando información del usuario...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -59,7 +115,7 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
 
       {error && <div className="p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm">{error}</div>}
 
-      {/* Formulario de Filtros de Cabecera */}
+      {/* Formulario de Filtros */}
       <form onSubmit={realizarBusqueda} className="p-4 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase">Marca *</label>
@@ -89,7 +145,7 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
         <div className="flex items-center col-span-full pt-2 border-t border-gray-200 mt-2">
           <input type="checkbox" id="saldoFilter" checked={soloAsequibles} onChange={(e) => setSoloAsequibles(e.target.checked)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
           <label htmlFor="saldoFilter" className="ml-2 text-xs font-medium text-gray-700">
-            Ver solo lo que puedo adquirir con mi saldo actual ({saldoUsuario} pts disp.)
+            Ver solo lo que puedo adquirir con mi saldo actual ({saldoUsuario} pts disponibles)
           </label>
         </div>
       </form>
@@ -98,29 +154,29 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {piezasFiltradas.map((pieza) => (
           <div key={pieza.id_inventario} className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
-            {/* HU 7 - Vista Collage (Todas las imágenes visibles de inmediato) */}
+            {/* HU 7 - Vista Collage de fotos */}
             {pieza.fotos && pieza.fotos.length > 0 ? (
               <div className="w-full h-32 bg-gray-100 flex gap-0.5 overflow-hidden">
                 {/* Primera foto (siempre ocupa la izquierda) */}
                 <div className={`h-full ${pieza.fotos.length === 1 ? 'w-full' : 'w-2/3'}`}>
                   <img 
-                    src={`http://localhost:8000${pieza.fotos[0]}`} 
+                    src={`http://127.0.0.1:8000${pieza.fotos[0]}`} 
                     alt={`${pieza.repuesto} principal`} 
                     className="w-full h-full object-cover"
                   />
                 </div>
                 
-                {/* Columna derecha con las fotos restantes (hasta 2 para no deformarlas en ese pequeño espacio) */}
+                {/* Columna derecha con las fotos restantes */}
                 {pieza.fotos.length > 1 && (
                   <div className="w-1/3 flex flex-col gap-0.5 h-full">
                     {pieza.fotos.slice(1, 3).map((foto, index) => (
                       <div key={index} className="flex-1 w-full h-1/2 relative">
                         <img 
-                          src={`http://localhost:8000${foto}`} 
+                          src={`http://127.0.0.1:8000${foto}`} 
                           alt={`${pieza.repuesto} detalle`} 
                           className="w-full h-full object-cover"
                         />
-                        {/* Overlay para indicar si hay más de 3 fotos (ej: si son 5, muestra "+2") */}
+                        {/* Overlay para indicar si hay más de 3 fotos */}
                         {index === 1 && pieza.fotos.length > 3 && (
                           <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
                             <span className="text-white font-bold text-xs">+{pieza.fotos.length - 3}</span>
@@ -136,10 +192,13 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
                 [Sin Imagen]
               </div>
             )}
+            
             <div className="p-3 space-y-1">
-              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">{marca}</span>
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">
+                {marca || 'Vehículo'}
+              </span>
               <h3 className="font-bold text-gray-800 text-sm truncate">{pieza.repuesto}</h3>
-              <p className="text-xs text-gray-400">{modelo} • Año {anio}</p>
+              <p className="text-xs text-gray-400">{modelo || 'Modelo'} • Año {anio || '?'}</p>
               <p className="text-[11px] text-gray-500 italic truncate">{pieza.referencia_ubicacion}</p>
               
               {/* Costo Prominente */}
@@ -147,7 +206,12 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
                 <span className="text-xs text-gray-500">Costo:</span>
                 <span className="text-base font-black text-gray-900">{pieza.valor_puntos} Puntos</span>
               </div>
-              <button className="w-full mt-2 bg-gray-800 hover:bg-gray-900 text-white font-medium text-xs py-1.5 px-2 rounded transition">
+              
+              {/* HU4 - Botón para Solicitar Trueque */}
+              <button 
+                onClick={() => solicitarTrueque(pieza.id_inventario)}
+                className="w-full mt-2 bg-gray-800 hover:bg-gray-900 text-white font-medium text-xs py-1.5 px-2 rounded transition"
+              >
                 Solicitar Trueque
               </button>
             </div>
