@@ -60,13 +60,17 @@ def buscar_repuestos(request):
             
             resultados = []
             for oferta in ofertas:
+                # Obtenemos las rutas de las fotos de esta oferta
+                rutas_fotos = [foto.imagen.url for foto in oferta.fotos.all() if foto.imagen]
+                
                 resultados.append({
                     "id_inventario": str(oferta.id_inventario),
                     "repuesto": oferta.repuesto.nombre_pieza,
                     "valor_puntos": oferta.valor_puntos,
                     "rango_horario": oferta.rango_horario,
                     "referencia_ubicacion": oferta.referencia_ubicacion,
-                    "estado_oferta": oferta.estado_oferta
+                    "estado_oferta": oferta.estado_oferta,
+                    "fotos": rutas_fotos
                 })
                 
             return JsonResponse(resultados, safe=False, status=200)

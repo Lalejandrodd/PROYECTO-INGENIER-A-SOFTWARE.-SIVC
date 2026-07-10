@@ -98,10 +98,44 @@ export default function BuscadorCatalogo({ saldoUsuario = 140 }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {piezasFiltradas.map((pieza) => (
           <div key={pieza.id_inventario} className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
-            {/* si no hay imagen se coloca algo genérico */}
-            <div className="w-full h-32 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
-              [Sin Imagen]
-            </div>
+            {/* HU 7 - Vista Collage (Todas las imágenes visibles de inmediato) */}
+            {pieza.fotos && pieza.fotos.length > 0 ? (
+              <div className="w-full h-32 bg-gray-100 flex gap-0.5 overflow-hidden">
+                {/* Primera foto (siempre ocupa la izquierda) */}
+                <div className={`h-full ${pieza.fotos.length === 1 ? 'w-full' : 'w-2/3'}`}>
+                  <img 
+                    src={`http://localhost:8000${pieza.fotos[0]}`} 
+                    alt={`${pieza.repuesto} principal`} 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                
+                {/* Columna derecha con las fotos restantes (hasta 2 para no deformarlas en ese pequeño espacio) */}
+                {pieza.fotos.length > 1 && (
+                  <div className="w-1/3 flex flex-col gap-0.5 h-full">
+                    {pieza.fotos.slice(1, 3).map((foto, index) => (
+                      <div key={index} className="flex-1 w-full h-1/2 relative">
+                        <img 
+                          src={`http://localhost:8000${foto}`} 
+                          alt={`${pieza.repuesto} detalle`} 
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Overlay para indicar si hay más de 3 fotos (ej: si son 5, muestra "+2") */}
+                        {index === 1 && pieza.fotos.length > 3 && (
+                          <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
+                            <span className="text-white font-bold text-xs">+{pieza.fotos.length - 3}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-full h-32 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                [Sin Imagen]
+              </div>
+            )}
             <div className="p-3 space-y-1">
               <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">{marca}</span>
               <h3 className="font-bold text-gray-800 text-sm truncate">{pieza.repuesto}</h3>

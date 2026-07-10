@@ -124,12 +124,14 @@ export default function RegistroOfertas() {
 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
-    if (files.length < 3 || files.length > 5) {
-      setErrorOferta('Debes subir entre 3 y 5 fotografías.');
-      return;
-    }
-    setImagenes(files);
+    // Unir las fotos existentes con las nuevas, limitando a 5
+    const nuevasImagenes = [...imagenes, ...files].slice(0, 5);
+    setImagenes(nuevasImagenes);
     setErrorOferta('');
+  };
+
+  const handleRemoveImage = (indexToRemove) => {
+    setImagenes(imagenes.filter((_, index) => index !== indexToRemove));
   };
 
   // Publicar oferta enviando el tipo de tasación
@@ -443,17 +445,46 @@ export default function RegistroOfertas() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">
                     Fotografías del Repuesto (3 a 5) *
                   </label>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".jpg,.jpeg,.png"
-                    onChange={handleImageChange}
-                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700"
-                    required
-                  />
+
+                  {/* HU 7 - Vista de Miniaturas y Borrado Individual */}
+                  {imagenes.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {imagenes.map((img, index) => (
+                        <div key={index} className="relative w-16 h-16 rounded-md overflow-hidden border border-gray-300 shadow-sm">
+                          <img 
+                            src={URL.createObjectURL(img)} 
+                            alt={`Preview ${index}`} 
+                            className="w-full h-full object-cover" 
+                          />
+                          <button 
+                            type="button" 
+                            onClick={() => handleRemoveImage(index)}
+                            className="absolute top-0 right-0 bg-red-500 text-white rounded-bl-md hover:bg-red-600 leading-none text-[10px] w-5 h-5 flex justify-center items-center"
+                            title="Eliminar foto"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Input de selección (oculto si ya llegamos al máximo de 5) */}
+                  {imagenes.length < 5 && (
+                    <input
+                      type="file"
+                      multiple
+                      accept=".jpg,.jpeg,.png"
+                      onChange={handleImageChange}
+                      className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition"
+                    />
+                  )}
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Has subido {imagenes.length} de 5 fotografías permitidas (mínimo 3).
+                  </p>
                 </div>
 
                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 flex justify-between items-center">
