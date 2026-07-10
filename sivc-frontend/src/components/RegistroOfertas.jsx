@@ -7,10 +7,11 @@ export default function RegistroOfertas() {
     nombre_pieza: '',
     descripcion_tecnica: '',
     estado_fisico: '',
-    marca: '',
+    marca_id: '',      // ← ahora es ID de la marca
     modelo: '',
     anio: ''
   });
+  const [marcas, setMarcas] = useState([]);
   const [vehiculos, setVehiculos] = useState([]);
   const [repuestoCreado, setRepuestoCreado] = useState(null);
   const [creandoRepuesto, setCreandoRepuesto] = useState(false);
@@ -24,10 +25,9 @@ export default function RegistroOfertas() {
     referencia_ubicacion: ''
   });
   
-  // --- NUEVOS ESTADOS PARA LA TÁCTICA DEL INTERMEDIARIO ---
+  // Estados para la táctica del intermediario
   const [tipoTasacion, setTipoTasacion] = useState('algoritmico'); 
   const [valorManual, setValorManual] = useState('');
-  // --------------------------------------------------------
 
   const [imagenes, setImagenes] = useState([]);
   const [errorOferta, setErrorOferta] = useState('');
@@ -35,19 +35,22 @@ export default function RegistroOfertas() {
   const [cargandoOferta, setCargandoOferta] = useState(false);
   const [valorCalculado, setValorCalculado] = useState(null);
 
-  // Cargar vehículos disponibles para compatibilidad
+  // Cargar marcas y vehículos al montar el componente
   useEffect(() => {
-    const cargarVehiculos = async () => {
+    const cargarDatos = async () => {
       try {
-        const response = await axios.get('/api/vehiculos/', {
-          withCredentials: true
-        });
-        setVehiculos(response.data);
+        // 1. Obtener marcas
+        const marcasRes = await axios.get('/api/vehiculos/marcas/', { withCredentials: true });
+        setMarcas(marcasRes.data);
+
+        // 2. Obtener vehículos (por si se necesitan en otro lado)
+        const vehiculosRes = await axios.get('/api/vehiculos/', { withCredentials: true });
+        setVehiculos(vehiculosRes.data);
       } catch (err) {
-        console.error('Error cargando vehículos:', err);
+        console.error('Error cargando marcas/vehículos:', err);
       }
     };
-    cargarVehiculos();
+    cargarDatos();
   }, []);
 
   const estadosFisicos = [
@@ -77,7 +80,7 @@ export default function RegistroOfertas() {
         nombre_pieza: repuestoForm.nombre_pieza,
         descripcion_tecnica: repuestoForm.descripcion_tecnica,
         estado_fisico: repuestoForm.estado_fisico,
-        marca: repuestoForm.marca,
+        marca_id: repuestoForm.marca_id,   // ← ahora enviamos el ID
         modelo: repuestoForm.modelo,
         anio: repuestoForm.anio
       }, {
@@ -98,7 +101,7 @@ export default function RegistroOfertas() {
           nombre_pieza: '',
           descripcion_tecnica: '',
           estado_fisico: '',
-          marca: '',
+          marca_id: '',
           modelo: '',
           anio: ''
         });
@@ -134,12 +137,9 @@ export default function RegistroOfertas() {
     setImagenes(imagenes.filter((_, index) => index !== indexToRemove));
   };
 
-  // Publicar oferta enviando el tipo de tasación
-// Publicar oferta enviando el tipo de tasación
   const handlePublicarOferta = async (e) => {
     e.preventDefault();
     
-    // CORRECCIÓN AQUÍ: Cambiado 'images.length' por 'imagenes.length'
     if (imagenes.length < 3 || imagenes.length > 5) {
       setErrorOferta('Debes subir entre 3 y 5 fotografías.');
       return;
@@ -184,7 +184,7 @@ export default function RegistroOfertas() {
         });
         setImagenes([]);
         setRepuestoCreado(null);
-        setValorCalculado(response.data.valor_puntos); // <-- ESTO ACTUALIZA EL CUADRO AZUL
+        setValorCalculado(response.data.valor_puntos);
         setValorManual('');
         
         setTimeout(() => setSuccessOferta(false), 3000);
@@ -279,17 +279,21 @@ export default function RegistroOfertas() {
                 Compatibilidad con Vehículo *
               </label>
               <div className="grid grid-cols-3 gap-3">
+                {/* Marca con combo box */}
                 <div>
                   <label className="block text-xs text-gray-500">Marca</label>
-                  <input
-                    type="text"
-                    name="marca"
-                    value={repuestoForm.marca}
+                  <select
+                    name="marca_id"
+                    value={repuestoForm.marca_id}
                     onChange={handleRepuestoChange}
-                    placeholder="Toyota"
                     className="w-full p-2 border border-gray-300 rounded-md"
                     required
-                  />
+                  >
+                    <option value="">Seleccione una marca</option>
+                    {marcas.map(m => (
+                      <option key={m.id} value={m.id}>{m.nombre}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500">Modelo</label>
@@ -371,7 +375,7 @@ export default function RegistroOfertas() {
 
               <form onSubmit={handlePublicarOferta} className="space-y-4">
                 
-                {/* --- NUEVO SELECTOR DE ESTRATEGIA (MODIFICABILIDAD) --- */}
+                {/* Selector de estrategia de valoración */}
                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                   <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
                     Modalidad de Valoración (Táctica Md)
@@ -394,7 +398,7 @@ export default function RegistroOfertas() {
                   </div>
                 </div>
 
-                {/* --- CAMPO EN CALIENTE PARA VALOR MANUAL --- */}
+                {/* Valor manual (solo en modo directo) */}
                 {tipoTasacion === 'directo' && (
                   <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <label className="block text-xs font-semibold text-amber-900 uppercase mb-1">
@@ -412,7 +416,6 @@ export default function RegistroOfertas() {
                     <p className="text-[10px] text-amber-700 mt-1">Los vecinos acuerdan libremente las unidades de valor.</p>
                   </div>
                 )}
-                {/* ----------------------------------------------------- */}
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
@@ -449,7 +452,7 @@ export default function RegistroOfertas() {
                     Fotografías del Repuesto (3 a 5) *
                   </label>
 
-                  {/* HU 7 - Vista de Miniaturas y Borrado Individual */}
+                  {/* Previsualización de miniaturas con botón de eliminar */}
                   {imagenes.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {imagenes.map((img, index) => (
@@ -472,7 +475,7 @@ export default function RegistroOfertas() {
                     </div>
                   )}
 
-                  {/* Input de selección (oculto si ya llegamos al máximo de 5) */}
+                  {/* Input para añadir más fotos (solo si no hemos llegado a 5) */}
                   {imagenes.length < 5 && (
                     <input
                       type="file"
@@ -487,6 +490,7 @@ export default function RegistroOfertas() {
                   </p>
                 </div>
 
+                {/* Valor calculado (último resultado) */}
                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 flex justify-between items-center">
                   <div>
                     <h4 className="font-bold text-blue-900 text-sm">Último resultado guardado</h4>

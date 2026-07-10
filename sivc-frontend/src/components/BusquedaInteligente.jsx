@@ -3,19 +3,33 @@ import axios from 'axios';
 
 export default function BuscadorCatalogo() {
   // Estados para los filtros del formulario
-  const [marca, setMarca] = useState('');
+  const [marcas, setMarcas] = useState([]);
+  const [marcaId, setMarcaId] = useState('');        // ← ID de la marca seleccionada
   const [modelo, setModelo] = useState('');
-  const [anio, setAnio] = useState(''); 
+  const [anio, setAnio] = useState('');
   const [soloAsequibles, setSoloAsequibles] = useState(false);
 
   // Estados para almacenar la respuesta del servidor
-  const [piezas, setPiezas] = useState([]); 
+  const [piezas, setPiezas] = useState([]);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
   // Estado para el saldo real del usuario (HU9)
   const [saldoUsuario, setSaldoUsuario] = useState(0);
   const [cargandoSaldo, setCargandoSaldo] = useState(true);
+
+  // Obtener marcas al montar el componente
+  useEffect(() => {
+    const cargarMarcas = async () => {
+      try {
+        const response = await axios.get('/api/vehiculos/marcas/', { withCredentials: true });
+        setMarcas(response.data);
+      } catch (err) {
+        console.error('Error cargando marcas:', err);
+      }
+    };
+    cargarMarcas();
+  }, []);
 
   // Obtener saldo real del usuario autenticado
   useEffect(() => {
@@ -31,7 +45,6 @@ export default function BuscadorCatalogo() {
         }
       } catch (err) {
         console.error('Error obteniendo saldo:', err);
-        // Si no está autenticado, usar valor por defecto
         setSaldoUsuario(0);
       } finally {
         setCargandoSaldo(false);
@@ -44,7 +57,7 @@ export default function BuscadorCatalogo() {
   const realizarBusqueda = async (e) => {
     if (e) e.preventDefault();
 
-    if (!marca || !modelo || !anio) {
+    if (!marcaId || !modelo || !anio) {
       setError('Para buscar, debes ingresar obligatoriamente Marca, Modelo y Año del vehículo.');
       return;
     }
@@ -54,7 +67,12 @@ export default function BuscadorCatalogo() {
 
     try {
       const response = await axios.get('/api/buscar/', {
-        params: { marca, modelo, anio }
+        params: {
+          marca_id: marcaId,   // ← ahora enviamos ID
+          modelo: modelo,
+          anio: anio
+        },
+        withCredentials: true
       });
       setPiezas(response.data);
     } catch (err) {
@@ -74,7 +92,7 @@ export default function BuscadorCatalogo() {
         return;
       }
 
-      const response = await axios.post('/api/solicitar/', 
+      const response = await axios.post('/api/solicitar/',
         { oferta_id: ofertaId },
         {
           headers: { 'X-Session-ID': sessionid || '' },
@@ -115,24 +133,40 @@ export default function BuscadorCatalogo() {
 
       {error && <div className="p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm">{error}</div>}
 
-      {/* Formulario de Filtros */}
+      {/* Formulario de Filtros con combo de marcas */}
       <form onSubmit={realizarBusqueda} className="p-4 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase">Marca *</label>
-          <select value={marca} onChange={(e) => setMarca(e.target.value)} className="mt-1 block w-full p-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm">
-            <option value="">Todas las marcas</option>
-            <option value="Toyota">Toyota</option>
-            <option value="Chevrolet">Chevrolet</option>
-            <option value="Ford">Ford</option>
+          <select
+            value={marcaId}
+            onChange={(e) => setMarcaId(e.target.value)}
+            className="mt-1 block w-full p-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm"
+          >
+            <option value="">Seleccione una marca</option>
+            {marcas.map(m => (
+              <option key={m.id} value={m.id}>{m.nombre}</option>
+            ))}
           </select>
         </div>
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase">Modelo *</label>
-          <input type="text" value={modelo} onChange={(e) => setModelo(e.target.value)} placeholder="Ej: Corolla" className="mt-1 block w-full p-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm" />
+          <input
+            type="text"
+            value={modelo}
+            onChange={(e) => setModelo(e.target.value)}
+            placeholder="Ej: Corolla"
+            className="mt-1 block w-full p-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm"
+          />
         </div>
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase">Año *</label>
-          <input type="number" value={anio} onChange={(e) => setAnio(e.target.value)} placeholder="Ej: 2015" className="mt-1 block w-full p-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm" />
+          <input
+            type="number"
+            value={anio}
+            onChange={(e) => setAnio(e.target.value)}
+            placeholder="Ej: 2015"
+            className="mt-1 block w-full p-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm"
+          />
         </div>
         
         <div className="pt-4 md:pt-4 flex flex-col gap-2">
@@ -143,7 +177,13 @@ export default function BuscadorCatalogo() {
 
         {/* HU 9: Toggle para activar filtro según saldo actual */}
         <div className="flex items-center col-span-full pt-2 border-t border-gray-200 mt-2">
-          <input type="checkbox" id="saldoFilter" checked={soloAsequibles} onChange={(e) => setSoloAsequibles(e.target.checked)} className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+          <input
+            type="checkbox"
+            id="saldoFilter"
+            checked={soloAsequibles}
+            onChange={(e) => setSoloAsequibles(e.target.checked)}
+            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
           <label htmlFor="saldoFilter" className="ml-2 text-xs font-medium text-gray-700">
             Ver solo lo que puedo adquirir con mi saldo actual ({saldoUsuario} pts disponibles)
           </label>
@@ -159,9 +199,9 @@ export default function BuscadorCatalogo() {
               <div className="w-full h-32 bg-gray-100 flex gap-0.5 overflow-hidden">
                 {/* Primera foto (siempre ocupa la izquierda) */}
                 <div className={`h-full ${pieza.fotos.length === 1 ? 'w-full' : 'w-2/3'}`}>
-                  <img 
-                    src={`http://127.0.0.1:8000${pieza.fotos[0]}`} 
-                    alt={`${pieza.repuesto} principal`} 
+                  <img
+                    src={`http://127.0.0.1:8000${pieza.fotos[0]}`}
+                    alt={`${pieza.repuesto} principal`}
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -171,9 +211,9 @@ export default function BuscadorCatalogo() {
                   <div className="w-1/3 flex flex-col gap-0.5 h-full">
                     {pieza.fotos.slice(1, 3).map((foto, index) => (
                       <div key={index} className="flex-1 w-full h-1/2 relative">
-                        <img 
-                          src={`http://127.0.0.1:8000${foto}`} 
-                          alt={`${pieza.repuesto} detalle`} 
+                        <img
+                          src={`http://127.0.0.1:8000${foto}`}
+                          alt={`${pieza.repuesto} detalle`}
                           className="w-full h-full object-cover"
                         />
                         {/* Overlay para indicar si hay más de 3 fotos */}
@@ -195,7 +235,7 @@ export default function BuscadorCatalogo() {
             
             <div className="p-3 space-y-1">
               <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">
-                {marca || 'Vehículo'}
+                {marcas.find(m => m.id === parseInt(marcaId))?.nombre || 'Vehículo'}
               </span>
               <h3 className="font-bold text-gray-800 text-sm truncate">{pieza.repuesto}</h3>
               <p className="text-xs text-gray-400">{modelo || 'Modelo'} • Año {anio || '?'}</p>
@@ -208,7 +248,7 @@ export default function BuscadorCatalogo() {
               </div>
               
               {/* HU4 - Botón para Solicitar Trueque */}
-              <button 
+              <button
                 onClick={() => solicitarTrueque(pieza.id_inventario)}
                 className="w-full mt-2 bg-gray-800 hover:bg-gray-900 text-white font-medium text-xs py-1.5 px-2 rounded transition"
               >

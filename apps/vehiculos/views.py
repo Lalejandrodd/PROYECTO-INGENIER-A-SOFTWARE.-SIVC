@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from apps.ofertas.models import Oferta
-from apps.vehiculos.models import Vehiculo
+from apps.vehiculos.models import Marca, Vehiculo
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 
@@ -56,6 +56,35 @@ def buscar_repuestos(request):
         return Response({"error": f"Error en el servidor: {str(e)}"}, status=500)
     
 def listar_vehiculos(request):
-    # Interacción con CLASE DEL DIAGRAMA: Vehiculo
-    vehiculos = Vehiculo.objects.all().values('id', 'marca', 'modelo', 'anio')
-    return JsonResponse(list(vehiculos), safe=False)
+    """
+    GET /api/vehiculos/
+    Retorna todos los vehículos con sus datos completos.
+    Incluye el ID y nombre de la marca asociada.
+    """
+    vehiculos = Vehiculo.objects.all().values(
+        'id', 
+        'marca__id', 
+        'marca__nombre', 
+        'modelo', 
+        'anio'
+    )
+    # Renombrar las claves para que el frontend las entienda mejor
+    data = []
+    for v in vehiculos:
+        data.append({
+            'id': v['id'],
+            'marca_id': v['marca__id'],
+            'marca': v['marca__nombre'],
+            'modelo': v['modelo'],
+            'anio': v['anio']
+        })
+    return JsonResponse(data, safe=False)
+
+def listar_marcas(request):
+    """
+    GET /api/vehiculos/marcas/
+    Retorna todas las marcas ordenadas alfabéticamente (id, nombre).
+    Este endpoint es usado por los combobox del frontend.
+    """
+    marcas = Marca.objects.all().values('id', 'nombre')
+    return JsonResponse(list(marcas), safe=False)

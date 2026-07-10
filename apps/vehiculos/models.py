@@ -1,27 +1,28 @@
 from django.db import models
 
 # ---------------------------------------------------------
-# CLASE DEL DIAGRAMA: Vehiculo
+# CLASE DEL DIAGRAMA: Marca (nueva entidad)
 # ---------------------------------------------------------
+class Marca(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
 
+    class Meta:
+        ordering = ['nombre']  # orden alfabético siempre
+
+    def __str__(self):
+        return self.nombre
+
+
+# ---------------------------------------------------------
+# CLASE DEL DIAGRAMA: Vehiculo (ahora con FK a Marca)
+# ---------------------------------------------------------
 class Vehiculo(models.Model):
-    marca = models.CharField(max_length=100)
+    marca = models.ForeignKey(Marca, on_delete=models.PROTECT, related_name='vehiculos')
     modelo = models.CharField(max_length=100)
     anio = models.IntegerField()
 
+    class Meta:
+        ordering = ['marca__nombre', 'modelo', 'anio']  # orden compuesto
+
     def __str__(self):
-        return f"{self.marca} {self.modelo} ({self.anio})"
-    
-# ---------------------------------------------------------
-# CLASE ASOCIACIÓN DEL DIAGRAMA: Compatibilidad (Reemplaza a Matriz Compatibilidad)
-# Esta clase conecta Repuesto y Vehiculo.
-# ---------------------------------------------------------
-#class Compatibilidad(models.Model):
-#    vehiculo = models.ForeignKey(Vehiculo, on_delete=models.CASCADE)
-#    repuesto = models.ForeignKey('repuestos.Repuesto', on_delete=models.CASCADE)
-    
-    # MÉTODO DEL DIAGRAMA: validarMatch(idRepuesto, idVehiculo)
-    # En Django, esto se puede manejar como un método de clase o un property
-#    @classmethod
-#    def validar_match(cls, repuesto_id, vehiculo_id):
-#        return cls.objects.filter(repuesto_id=repuesto_id, vehiculo_id=vehiculo_id).exists()
+        return f"{self.marca.nombre} {self.modelo} ({self.anio})"
