@@ -173,6 +173,59 @@ class AcuerdoIntercambio(models.Model):
 
     estado_anterior = models.CharField(max_length=20, blank=True, null=True)
 
+    def clean(self):
+        """
+        VALIDACIÓN DEL BACKEND: Evita que se inicie o complete el intercambio 
+        si el demandante (el que compra) no tiene saldo suficiente.
+        """
+        super().clean()
+        
+        # El valor de la transacción viene del precio/puntos de la oferta
+        puntos_requeridos = self.oferta.puntos_valor  # Ajusta al nombre exacto de tu campo de puntos en Oferta
+        
+        # El demandante es el vecino que solicita la pieza y debe pagar
+        if self.demandante.saldo_puntos < puntos_requeridos:
+            raise ValidationError(
+                f"Transacción inválida: El vecino @{self.demandante.usuario.username} "
+                f"no tiene saldo suficiente. Requiere {puntos_requeridos} y posee {self.demandante.saldo_puntos}."
+            )
+
+    def save(self, *args, **kwargs):
+        """
+        EJECUCIÓN DEL INTERCAMBIO: Si el estado cambia a 'completado', 
+        hace la transferencia real de puntos en la base de datos.
+        """
+        # Validamos antes de guardar por seguridad
+        self.full_clean()
+        
+        # Detectar si el acuerdo se está marcando como completado justo ahora
+        if self.estado == 'completado':
+            puntos_a_transferir = self.oferta.puntos_valor
+            
+            # Restamos al que pide la pieza (demandante) y sumamos al dueño de la pieza (ofertante)
+            self.demandante.saldo_puntos -= puntos_a_transferir
+            self.ofertante.saldo_puntos += puntos_a_transferir
+            
+            # Guardamos el nuevo saldo de ambos vecinos
+            self.demandante.save()
+            self.ofertante.save()
+            
+            print(f"💰 Trueque Exitoso: Se transfirieron {puntos_a_transferir} puntos de @{self.demandante.usuario.username} a @{self.ofertante.usuario.username}")
+            
+            # Adicionalmente, aquí puedes automatizar la creación del registro en el modelo Transaccion
+            # para dejar el registro histórico exigido por el DAS
+            if not Transaccion.objects.filter(acuerdo=self).exists():
+                Transaccion.objects.create(
+                    puntos_transferidos=puntos_a_transferir,
+                    ofertante=self.ofertante,
+                    demandante=self.demandante,
+                    oferta=self.oferta,
+                    acuerdo=self,
+                    completada=True
+                )
+
+        super().save(*args, **kwargs)
+
     class Meta:
         unique_together = ['oferta', 'ofertante', 'demandante']
         verbose_name = "Acuerdo de Intercambio"

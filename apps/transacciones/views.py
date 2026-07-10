@@ -363,16 +363,34 @@ def confirmar_recepcion(request, transaccion_id):
         if acuerdo.estado == 'cancelacion_pendiente':
             return JsonResponse({"error": "Hay una solicitud de cancelación pendiente. Resuélvela antes de confirmar recepción"}, status=400)
 
-    # Transferir puntos al ofertante
+    # 🚨 NUEVA VALIDACIÓN DE SEGURIDAD (Backend): Verificar saldo antes de debitar
+    demandante = transaccion.demandante
+    puntos_a_transferir = transaccion.puntos_transferidos
+
+    if demandante.saldo_puntos < puntos_a_transferir:
+        return JsonResponse({
+            "error": "Saldo insuficiente",
+            "message": f"El demandante no posee suficientes puntos ({demandante.saldo_puntos}) para transferir ({puntos_a_transferir})."
+        }, status=400)
+
+    # 💰 TRANSFERENCIA BALANCEADA DE PUNTOS (Uso de 'saldo_puntos')
     ofertante = transaccion.ofertante
-    ofertante.saldo_puntos += transaccion.puntos_transferidos
+    
+    # Restamos al que recibe la pieza y sumamos al que la entregó
+    demandante.saldo_puntos -= puntos_a_transferir
+    ofertante.saldo_puntos += puntos_a_transferir
+    
+    # Guardamos los cambios de ambos de manera persistente
+    demandante.save()
     ofertante.save()
 
-    # Agregar transacción al historial de ambos
+    print(f"💰 Intercambio Exitoso: {puntos_a_transferir} pts transferidos de @{demandante.usuario.username} a @{ofertante.usuario.username}")
+
+    # Agregar transacción al historial de ambos (Lógica original que ya tenían)
     historial_ofertante = ofertante.historial
     historial_ofertante.agregar_transaccion(transaccion)
 
-    historial_demandante = transaccion.demandante.historial
+    historial_demandante = demandante.historial
     historial_demandante.agregar_transaccion(transaccion)
 
     # Marcar transacción como completada
@@ -386,9 +404,9 @@ def confirmar_recepcion(request, transaccion_id):
         acuerdo.save()
 
     return JsonResponse({
-        "success": True,
-        "message": "Recepción confirmada. Puntos transferidos al ofertante. Trueque completado."
-    }, status=200)
+        "status": "success", 
+        "message": "Recepción confirmada con éxito. Puntos transferidos."
+    })
 
 
 @require_http_methods(["GET"])
