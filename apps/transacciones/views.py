@@ -309,13 +309,12 @@ def aceptar_intercambio(request, acuerdo_id):
     acuerdo.save()
     
     # Crear transacción (aún no hay transferencia de puntos, solo registro)
-    # 🔧 FIX: Se agregó la coma que faltaba entre puntos_transferidos y acuerdo
     transaccion = Transaccion.objects.create(
         oferta=acuerdo.oferta,
         ofertante=acuerdo.ofertante,
         demandante=acuerdo.demandante,
         puntos_transferidos=acuerdo.oferta.valor_puntos,
-        acuerdo=acuerdo  # ← Asociamos el acuerdo
+        acuerdo=acuerdo
     )
     
     # Iniciar conversación de chat (HU4)
@@ -334,6 +333,11 @@ def aceptar_intercambio(request, acuerdo_id):
 @csrf_exempt
 @require_http_methods(["POST"])
 def confirmar_recepcion(request, transaccion_id):
+    """
+    POST /api/confirmar-recepcion/<transaccion_id>/
+    El demandante confirma que recibió el repuesto.
+    Se transfieren los puntos al ofertante y se actualizan historiales.
+    """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
@@ -351,6 +355,14 @@ def confirmar_recepcion(request, transaccion_id):
     if transaccion.completada:
         return JsonResponse({"error": "Esta transacción ya fue completada"}, status=400)
 
+    # 🔒 Validación del estado del acuerdo asociado
+    if transaccion.acuerdo:
+        acuerdo = transaccion.acuerdo
+        if acuerdo.estado == 'cancelado':
+            return JsonResponse({"error": "Este trueque ha sido cancelado, no se puede confirmar recepción"}, status=400)
+        if acuerdo.estado == 'cancelacion_pendiente':
+            return JsonResponse({"error": "Hay una solicitud de cancelación pendiente. Resuélvela antes de confirmar recepción"}, status=400)
+
     # Transferir puntos al ofertante
     ofertante = transaccion.ofertante
     ofertante.saldo_puntos += transaccion.puntos_transferidos
@@ -367,7 +379,7 @@ def confirmar_recepcion(request, transaccion_id):
     transaccion.completada = True
     transaccion.save()
 
-    # ⭐ CAMBIAR EL ESTADO DEL ACUERDO A COMPLETADO
+    # Cambiar el estado del acuerdo a completado
     if transaccion.acuerdo:
         acuerdo = transaccion.acuerdo
         acuerdo.estado = 'completado'
@@ -412,6 +424,11 @@ def transacciones_para_confirmar(request):
 
 @require_http_methods(["GET"])
 def mis_acuerdos(request):
+    """
+    GET /api/mis-acuerdos/
+    Retorna todos los acuerdos activos (pendiente, aceptado, cancelacion_pendiente)
+    donde el usuario participa.
+    """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
@@ -432,7 +449,7 @@ def mis_acuerdos(request):
             "ofertante_nombre": a.ofertante.usuario.nombre_completo,
             "demandante_nombre": a.demandante.usuario.nombre_completo,
             "estado": a.estado,
-            "estado_anterior": a.estado_anterior,  # ← para restaurar si se rechaza
+            "estado_anterior": a.estado_anterior,  # para restaurar si se rechaza
             "cancelacion_solicitada_por": a.cancelacion_solicitada_por.id if a.cancelacion_solicitada_por else None,
         })
     return JsonResponse(data, safe=False, status=200)
@@ -441,6 +458,10 @@ def mis_acuerdos(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def solicitar_cancelacion(request, acuerdo_id):
+    """
+    POST /api/solicitar-cancelacion/<acuerdo_id>/
+    Un usuario solicita cancelar el trueque.
+    """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
@@ -473,6 +494,10 @@ def solicitar_cancelacion(request, acuerdo_id):
 @csrf_exempt
 @require_http_methods(["POST"])
 def confirmar_cancelacion(request, acuerdo_id):
+    """
+    POST /api/confirmar-cancelacion/<acuerdo_id>/
+    La otra parte confirma la cancelación.
+    """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
@@ -506,6 +531,10 @@ def confirmar_cancelacion(request, acuerdo_id):
 @csrf_exempt
 @require_http_methods(["POST"])
 def rechazar_cancelacion(request, acuerdo_id):
+    """
+    POST /api/rechazar-cancelacion/<acuerdo_id>/
+    La otra parte rechaza la cancelación, restaurando el estado anterior.
+    """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
