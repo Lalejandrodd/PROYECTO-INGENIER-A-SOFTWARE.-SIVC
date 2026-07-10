@@ -5,12 +5,10 @@ urlpatterns = [
     path('historial/', views.mi_historial, name='mi-historial'),
     path('ranking/', views.ranking_general, name='ranking-general'),
     
-    # Reputación y calificaciones
     path('calificar/', views.calificar, name='calificar'),
     path('reputacion/<int:user_id>/', views.reputacion_usuario, name='reputacion-usuario'),
     path('transacciones-para-calificar/', views.transacciones_para_calificar, name='transacciones-para-calificar'),
     
-    # Intercambios y chat
     path('solicitar/', views.solicitar_intercambio, name='solicitar-intercambio'),
     path('solicitudes-pendientes/', views.solicitudes_pendientes, name='solicitudes-pendientes'),
     path('aceptar/<int:acuerdo_id>/', views.aceptar_intercambio, name='aceptar-intercambio'),

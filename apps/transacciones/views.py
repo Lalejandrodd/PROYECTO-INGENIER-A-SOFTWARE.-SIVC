@@ -1,8 +1,8 @@
 import json
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.db import models  # para Q
-from django.db.models import Avg
+from django.db import models
+from django.db.models import Avg, Q
 from django.contrib.auth.models import User
 from django.contrib.sessions.models import Session
 from django.views.decorators.csrf import csrf_exempt
@@ -196,7 +196,6 @@ def transacciones_para_calificar(request):
         return JsonResponse({"error": "No autenticado"}, status=401)
     vecino = user.vecino
     
-    # Transacciones donde el usuario es parte y no ha calificado aún
     transacciones = Transaccion.objects.filter(
         models.Q(ofertante=vecino) | models.Q(demandante=vecino)
     ).exclude(
@@ -222,6 +221,7 @@ def solicitar_intercambio(request):
     """
     POST /api/solicitar/
     Un vecino solicita un trueque sobre una oferta activa.
+    Si ya existía un acuerdo cancelado con los mismos participantes, lo reactiva.
     """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
@@ -247,18 +247,46 @@ def solicitar_intercambio(request):
     if oferta.usuario.vecino == vecino:
         return JsonResponse({"error": "No puedes solicitar tu propia oferta"}, status=400)
     
-    # Verificar si ya hay un acuerdo pendiente
-    if AcuerdoIntercambio.objects.filter(oferta=oferta, demandante=vecino, estado='pendiente').exists():
-        return JsonResponse({"error": "Ya solicitaste este trueque"}, status=400)
+    ofertante = oferta.usuario.vecino
     
+    # Buscar si ya existe un acuerdo con estos tres participantes (incluyendo cancelados)
+    acuerdo_existente = AcuerdoIntercambio.objects.filter(
+        oferta=oferta,
+        ofertante=ofertante,
+        demandante=vecino
+    ).first()
+    
+    if acuerdo_existente:
+        # Si existe y está cancelado, lo reactivamos
+        if acuerdo_existente.estado == 'cancelado':
+            acuerdo_existente.estado = 'pendiente'
+            acuerdo_existente.cancelacion_solicitada_por = None
+            acuerdo_existente.estado_anterior = None
+            acuerdo_existente.save()
+            return JsonResponse({
+                "success": True,
+                "acuerdo_id": str(acuerdo_existente.id),
+                "message": "Acuerdo reactivado exitosamente (había sido cancelado previamente)"
+            }, status=200)
+        elif acuerdo_existente.estado == 'pendiente':
+            return JsonResponse({"error": "Ya tienes una solicitud pendiente para esta oferta"}, status=400)
+        elif acuerdo_existente.estado == 'aceptado':
+            return JsonResponse({"error": "Este trueque ya fue aceptado"}, status=400)
+        elif acuerdo_existente.estado == 'completado':
+            return JsonResponse({"error": "Este trueque ya fue completado"}, status=400)
+        elif acuerdo_existente.estado == 'cancelacion_pendiente':
+            return JsonResponse({"error": "Hay una solicitud de cancelación pendiente para este trueque"}, status=400)
+        # Para cualquier otro estado, devolvemos error genérico
+        return JsonResponse({"error": f"El acuerdo está en estado '{acuerdo_existente.estado}' y no se puede solicitar"}, status=400)
+    
+    # Si no existe, creamos uno nuevo
     acuerdo = AcuerdoIntercambio.objects.create(
         oferta=oferta,
-        ofertante=oferta.usuario.vecino,
+        ofertante=ofertante,
         demandante=vecino,
         estado='pendiente'
     )
     return JsonResponse({"success": True, "acuerdo_id": str(acuerdo.id)}, status=201)
-
 
 @require_http_methods(["GET"])
 def solicitudes_pendientes(request):
@@ -288,45 +316,66 @@ def solicitudes_pendientes(request):
 def aceptar_intercambio(request, acuerdo_id):
     """
     POST /api/aceptar/<acuerdo_id>/
-    El ofertante acepta el trueque, se crea transacción y se habilita el chat.
+    El ofertante acepta el trueque. Si ya existe una transacción para este acuerdo (por ejemplo, si fue cancelado y reactivado), se reutiliza.
     """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
         return JsonResponse({"error": "No autenticado"}, status=401)
     vecino = user.vecino
-    
+
     try:
         acuerdo = AcuerdoIntercambio.objects.get(id=acuerdo_id, estado='pendiente')
     except AcuerdoIntercambio.DoesNotExist:
-        return JsonResponse({"error": "Acuerdo no encontrado"}, status=404)
-    
+        return JsonResponse({"error": "Acuerdo no encontrado o no está pendiente"}, status=404)
+
     if acuerdo.ofertante != vecino:
         return JsonResponse({"error": "No autorizado – solo el ofertante puede aceptar"}, status=403)
-    
-    # Cambiar estado
+
+    # Cambiar estado del acuerdo a aceptado
     acuerdo.estado = 'aceptado'
     acuerdo.save()
-    
-    # Crear transacción (aún no hay transferencia de puntos, solo registro)
-    transaccion = Transaccion.objects.create(
+
+    # Buscar si ya existe una transacción para esta oferta y estos participantes
+    transaccion_existente = Transaccion.objects.filter(
         oferta=acuerdo.oferta,
         ofertante=acuerdo.ofertante,
-        demandante=acuerdo.demandante,
-        puntos_transferidos=acuerdo.oferta.valor_puntos,
-        acuerdo=acuerdo
-    )
-    
+        demandante=acuerdo.demandante
+    ).first()
+
+    if transaccion_existente:
+        # Si la transacción ya está completada, no se puede reutilizar
+        if transaccion_existente.completada:
+            return JsonResponse({
+                "error": "Este trueque ya fue completado previamente, no se puede volver a aceptar"
+            }, status=400)
+        # Si no está completada, la reutilizamos (actualizamos el campo acuerdo si es necesario)
+        transaccion_existente.acuerdo = acuerdo
+        transaccion_existente.save()
+        transaccion = transaccion_existente
+        mensaje = "Transacción existente reutilizada"
+    else:
+        # Crear nueva transacción
+        transaccion = Transaccion.objects.create(
+            oferta=acuerdo.oferta,
+            ofertante=acuerdo.ofertante,
+            demandante=acuerdo.demandante,
+            puntos_transferidos=acuerdo.oferta.valor_puntos,
+            acuerdo=acuerdo
+        )
+        mensaje = "Transacción creada"
+
     # Iniciar conversación de chat (HU4)
     from apps.chat.services import ChatService
     try:
         ChatService.crear_conversacion_si_es_posible(str(acuerdo.id))
     except Exception as e:
         print(f"Error al crear chat: {e}")
-    
+
     return JsonResponse({
         "success": True,
-        "transaccion_id": str(transaccion.id_transaccion)
+        "transaccion_id": str(transaccion.id_transaccion),
+        "message": mensaje
     }, status=200)
 
 
@@ -363,69 +412,68 @@ def confirmar_recepcion(request, transaccion_id):
         if acuerdo.estado == 'cancelacion_pendiente':
             return JsonResponse({"error": "Hay una solicitud de cancelación pendiente. Resuélvela antes de confirmar recepción"}, status=400)
 
-    # 🚨 NUEVA VALIDACIÓN DE SEGURIDAD (Backend): Verificar saldo antes de debitar
+    # 💰 Transferencia de puntos (con verificación de saldo)
+    ofertante = transaccion.ofertante
     demandante = transaccion.demandante
-    puntos_a_transferir = transaccion.puntos_transferidos
+    puntos = transaccion.puntos_transferidos
 
-    if demandante.saldo_puntos < puntos_a_transferir:
+    if demandante.saldo_puntos < puntos:
         return JsonResponse({
             "error": "Saldo insuficiente",
-            "message": f"El demandante no posee suficientes puntos ({demandante.saldo_puntos}) para transferir ({puntos_a_transferir})."
+            "message": f"El demandante no posee suficientes puntos ({demandante.saldo_puntos}) para transferir ({puntos})."
         }, status=400)
 
-    # 💰 TRANSFERENCIA BALANCEADA DE PUNTOS (Uso de 'saldo_puntos')
-    ofertante = transaccion.ofertante
-    
-    # Restamos al que recibe la pieza y sumamos al que la entregó
-    demandante.saldo_puntos -= puntos_a_transferir
-    ofertante.saldo_puntos += puntos_a_transferir
-    
-    # Guardamos los cambios de ambos de manera persistente
+    demandante.saldo_puntos -= puntos
+    ofertante.saldo_puntos += puntos
     demandante.save()
     ofertante.save()
 
-    print(f"💰 Intercambio Exitoso: {puntos_a_transferir} pts transferidos de @{demandante.usuario.username} a @{ofertante.usuario.username}")
-
-    # Agregar transacción al historial de ambos (Lógica original que ya tenían)
+    # Actualizar historiales
     historial_ofertante = ofertante.historial
     historial_ofertante.agregar_transaccion(transaccion)
 
     historial_demandante = demandante.historial
     historial_demandante.agregar_transaccion(transaccion)
 
-    # Marcar transacción como completada
     transaccion.completada = True
     transaccion.save()
 
-    # Cambiar el estado del acuerdo a completado
     if transaccion.acuerdo:
         acuerdo = transaccion.acuerdo
         acuerdo.estado = 'completado'
         acuerdo.save()
 
     return JsonResponse({
-        "status": "success", 
-        "message": "Recepción confirmada con éxito. Puntos transferidos."
-    })
+        "success": True,
+        "message": "Recepción confirmada. Puntos transferidos al ofertante. Trueque completado."
+    }, status=200)
 
 
 @require_http_methods(["GET"])
 def transacciones_para_confirmar(request):
     """
     GET /api/transacciones-para-confirmar/
-    Retorna las transacciones donde el usuario es demandante y aún no ha confirmado recepción.
+    Retorna las transacciones donde el usuario es demandante,
+    aún no ha confirmado recepción, y el acuerdo NO está cancelado ni en cancelación pendiente.
     """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
         return JsonResponse({"error": "No autenticado"}, status=401)
     vecino = user.vecino
-    
+
+    # Filtro principal: demandante = vecino, no completada
     transacciones = Transaccion.objects.filter(
         demandante=vecino,
         completada=False
+    ).filter(
+        # Si no tiene acuerdo (casos antiguos) o el acuerdo no está cancelado ni en cancelación pendiente
+        Q(acuerdo__isnull=True) | (
+            ~Q(acuerdo__estado='cancelado') &
+            ~Q(acuerdo__estado='cancelacion_pendiente')
+        )
     ).order_by('-fecha_exito')
-    
+
     data = [{
         "id_transaccion": str(t.id_transaccion),
         "repuesto": t.oferta.repuesto.nombre_pieza,
@@ -439,7 +487,6 @@ def transacciones_para_confirmar(request):
 # ============================================================
 # CANCELACIÓN DE TRUEQUES (con confirmación de ambas partes)
 # ============================================================
-
 @require_http_methods(["GET"])
 def mis_acuerdos(request):
     """
@@ -467,7 +514,7 @@ def mis_acuerdos(request):
             "ofertante_nombre": a.ofertante.usuario.nombre_completo,
             "demandante_nombre": a.demandante.usuario.nombre_completo,
             "estado": a.estado,
-            "estado_anterior": a.estado_anterior,  # para restaurar si se rechaza
+            "estado_anterior": a.estado_anterior,
             "cancelacion_solicitada_por": a.cancelacion_solicitada_por.id if a.cancelacion_solicitada_por else None,
         })
     return JsonResponse(data, safe=False, status=200)
@@ -500,7 +547,6 @@ def solicitar_cancelacion(request, acuerdo_id):
     if acuerdo.cancelacion_solicitada_por:
         return JsonResponse({"error": "Ya hay una solicitud de cancelación pendiente"}, status=400)
 
-    # Guardar estado anterior para poder restaurar si se rechaza
     acuerdo.estado_anterior = acuerdo.estado
     acuerdo.estado = 'cancelacion_pendiente'
     acuerdo.cancelacion_solicitada_por = vecino
@@ -576,7 +622,6 @@ def rechazar_cancelacion(request, acuerdo_id):
     if vecino != acuerdo.ofertante and vecino != acuerdo.demandante:
         return JsonResponse({"error": "No eres parte de este acuerdo"}, status=403)
 
-    # Restaurar el estado anterior (pendiente o aceptado)
     estado_restaurado = acuerdo.estado_anterior or 'pendiente'
     acuerdo.estado = estado_restaurado
     acuerdo.cancelacion_solicitada_por = None
