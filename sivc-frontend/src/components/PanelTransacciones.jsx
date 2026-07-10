@@ -77,6 +77,23 @@ export default function PanelTransacciones() {
     }
   };
 
+  // 🌟 FUNCIÓN INTEGRADORA PARA RECARGAR TODO EL PANEL AL INSTANTE
+  const cargarDatosTransacciones = async () => {
+    try {
+      // Ejecuta todas las cargas en paralelo para que sea súper rápido
+      await Promise.all([
+        cargarHistorial(),
+        cargarRanking(),
+        cargarConversaciones(),
+        cargarSolicitudesPendientes(),
+        cargarTransaccionesPendientes()
+      ]);
+      console.log("🔄 ¡Panel de transacciones recargado con éxito!");
+    } catch (err) {
+      console.error("Error al refrescar los datos del panel:", err);
+    }
+  };
+
   // Aceptar un trueque (oferta pendiente)
   const aceptarSolicitud = async (acuerdoId) => {
     try {
@@ -90,6 +107,7 @@ export default function PanelTransacciones() {
       cargarSolicitudesPendientes();
       cargarConversaciones();
       cargarAcuerdos();
+      cargarDatosTransacciones();
     } catch (err) {
       const mensaje = err.response?.data?.error || 'Error al aceptar el intercambio';
       alert('❌ ' + mensaje);
@@ -109,6 +127,7 @@ export default function PanelTransacciones() {
       cargarTransaccionesPendientes();
       cargarConversaciones();
       cargarAcuerdos();
+      cargarDatosTransacciones(); // Recargar historial y ranking
     } catch (err) {
       const mensaje = err.response?.data?.error || 'Error al confirmar recepción';
       alert('❌ ' + mensaje);
