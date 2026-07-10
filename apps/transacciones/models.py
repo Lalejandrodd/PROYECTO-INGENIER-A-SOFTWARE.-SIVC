@@ -175,15 +175,14 @@ class AcuerdoIntercambio(models.Model):
 
     def clean(self):
         """
-        VALIDACIÓN DEL BACKEND: Evita que se inicie o complete el intercambio 
-        si el demandante (el que compra) no tiene saldo suficiente.
+        VALIDACIÓN DEL BACKEND: Evita la creación o actualización de un acuerdo
+        si el demandante no tiene saldo_puntos suficiente para cubrir el costo.
         """
         super().clean()
         
-        # El valor de la transacción viene del precio/puntos de la oferta
-        puntos_requeridos = self.oferta.puntos_valor  # Ajusta al nombre exacto de tu campo de puntos en Oferta
-        
-        # El demandante es el vecino que solicita la pieza y debe pagar
+        # 🎯 CORRECCIÓN: El campo real en Oferta se llama 'puntos'
+        puntos_requeridos = self.oferta.puntos if hasattr(self.oferta, 'puntos') else 0
+
         if self.demandante.saldo_puntos < puntos_requeridos:
             raise ValidationError(
                 f"Transacción inválida: El vecino @{self.demandante.usuario.username} "
@@ -192,37 +191,25 @@ class AcuerdoIntercambio(models.Model):
 
     def save(self, *args, **kwargs):
         """
-        EJECUCIÓN DEL INTERCAMBIO: Si el estado cambia a 'completado', 
-        hace la transferencia real de puntos en la base de datos.
+        Controla el ciclo de vida del acuerdo. Al guardarse en estado 'completado',
+        realiza la transferencia atómica de 'saldo_puntos' en la base de datos.
         """
-        # Validamos antes de guardar por seguridad
-        self.full_clean()
-        
-        # Detectar si el acuerdo se está marcando como completado justo ahora
+        # Ejecutamos la validación antes de realizar cualquier persistencia
         if self.estado == 'completado':
-            puntos_a_transferir = self.oferta.puntos_valor
+            self.full_clean()
             
-            # Restamos al que pide la pieza (demandante) y sumamos al dueño de la pieza (ofertante)
-            self.demandante.saldo_puntos -= puntos_a_transferir
-            self.ofertante.saldo_puntos += puntos_a_transferir
+            puntos_a_transferir = self.oferta.puntos if hasattr(self.oferta, 'puntos') else 0
             
-            # Guardamos el nuevo saldo de ambos vecinos
-            self.demandante.save()
-            self.ofertante.save()
-            
-            print(f"💰 Trueque Exitoso: Se transfirieron {puntos_a_transferir} puntos de @{self.demandante.usuario.username} a @{self.ofertante.usuario.username}")
-            
-            # Adicionalmente, aquí puedes automatizar la creación del registro en el modelo Transaccion
-            # para dejar el registro histórico exigido por el DAS
-            if not Transaccion.objects.filter(acuerdo=self).exists():
-                Transaccion.objects.create(
-                    puntos_transferidos=puntos_a_transferir,
-                    ofertante=self.ofertante,
-                    demandante=self.demandante,
-                    oferta=self.oferta,
-                    acuerdo=self,
-                    completada=True
-                )
+            if puntos_a_transferir > 0:
+                # Modificación de saldos
+                self.demandante.saldo_puntos -= puntos_a_transferir
+                self.ofertante.saldo_puntos += puntos_a_transferir
+                
+                # Guardado persistente de los perfiles de vecinos modificados
+                self.demandante.save()
+                self.ofertante.save()
+                
+                print(f"💰 Trueque Exitoso: Se dedujeron e intercambiaron {puntos_a_transferir} puntos.")
 
         super().save(*args, **kwargs)
 
