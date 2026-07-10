@@ -334,26 +334,25 @@ class Urgencia(models.Model):
         self.save()
 
     def aceptar_solucion(self):
-        """El Vecino A acepta la ayuda y se transfieren los puntos"""
+        """El Vecino A acepta la ayuda y se transfieren los puntos de forma exitosa"""
         if self.estado_tramite != 'revision' or not self.vecino_postulado:
             raise ValidationError("No hay ninguna postulación pendiente para aceptar.")
         
-        # 👇 CORREGIDO: Se cambia self.vecino_creador por self.vecino
+        # Asignación de los actores del flujo
         vecino_a = self.vecino
         vecino_b = self.vecino_postulado
         
-        # 👇 CORREGIDO: Se cambia self.valor_puntos por self.puntos_recompensa_extra
         puntos_a_transferir = self.puntos_recompensa_extra 
 
-        # Validación de saldo
-        if vecino_a.puntos < puntos_a_transferir:
+        # 🎯 CORRECCIÓN 1: Validar usando 'saldo_puntos'
+        if vecino_a.saldo_puntos < puntos_a_transferir:
             raise ValidationError("No tienes puntos suficientes para cerrar esta urgencia.")
 
-        # Transferencia de puntos
-        vecino_a.puntos -= puntos_a_transferir
-        vecino_b.puntos += puntos_a_transferir
+        # 🎯 CORRECCIÓN 2: Transferencia usando el campo real 'saldo_puntos'
+        vecino_a.saldo_puntos -= puntos_a_transferir
+        vecino_b.saldo_puntos += puntos_a_transferir
         
-        # Guardar saldos de los vecinos
+        # Guardar saldos de los vecinos de forma persistente
         vecino_a.save()
         vecino_b.save()
 
