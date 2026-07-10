@@ -4,13 +4,14 @@ from django.core.exceptions import ValidationError
 from apps.usuarios.models import Vecino
 from apps.ofertas.models import Oferta
 
+
 class Transaccion(models.Model):
     """
     Representa un intercambio completado entre dos vecinos.
     """
     id_transaccion = models.UUIDField(
-        primary_key=True, 
-        default=uuid.uuid4, 
+        primary_key=True,
+        default=uuid.uuid4,
         editable=False
     )
     fecha_exito = models.DateTimeField(auto_now_add=True)
@@ -18,7 +19,7 @@ class Transaccion(models.Model):
     
     ofertante = models.ForeignKey(
         'usuarios.Vecino',
-        on_delete=models.PROTECT,  
+        on_delete=models.PROTECT,
         related_name='transacciones_como_ofertante'
     )
     demandante = models.ForeignKey(
@@ -94,11 +95,15 @@ class Historial(models.Model):
         return total
 
     def agregar_transaccion(self, transaccion):
-        if transaccion.ofertante == self.vecino or transaccion.demandante == self.vecino:
-            self.transacciones.add(transaccion)
-            self._actualizar_saldo_vecino(transaccion)
-        else:
+        """
+        Añade una transacción al historial y actualiza saldo + ranking del vecino.
+        Esta es la ÚNICA función que modifica los saldos de puntos.
+        """
+        if not (transaccion.ofertante == self.vecino or transaccion.demandante == self.vecino):
             raise ValidationError("Esta transacción no involucra al vecino")
+        
+        self.transacciones.add(transaccion)
+        self._actualizar_saldo_vecino(transaccion)
 
     def _actualizar_saldo_vecino(self, transaccion):
         if transaccion.ofertante == self.vecino:
@@ -155,35 +160,35 @@ class AcuerdoIntercambio(models.Model):
         ('aceptado', 'Aceptado'),
         ('rechazado', 'Rechazado'),
         ('completado', 'Completado'),
+        ('cancelado', 'Cancelado'),                     # ← estado final
+        ('cancelacion_pendiente', 'Cancelación Pendiente'),  # ← solicitud en curso
     )
     oferta = models.ForeignKey(Oferta, on_delete=models.PROTECT, related_name='acuerdos')
     ofertante = models.ForeignKey(Vecino, on_delete=models.PROTECT, related_name='acuerdos_como_ofertante')
     demandante = models.ForeignKey(Vecino, on_delete=models.PROTECT, related_name='acuerdos_como_demandante')
-    estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
+    estado = models.CharField(max_length=25, choices=ESTADOS, default='pendiente')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
 
     cancelacion_solicitada_por = models.ForeignKey(
-        Vecino, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
+        Vecino,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='cancelaciones_solicitadas'
     )
-
-    estado_anterior = models.CharField(max_length=20, blank=True, null=True)
+    estado_anterior = models.CharField(max_length=25, blank=True, null=True)
 
     def clean(self):
         """
-        VALIDACIÓN DEL BACKEND: Evita la creación o actualización de un acuerdo
-        si el demandante no tiene saldo_puntos suficiente para cubrir el costo.
+        Validación de saldo suficiente del demandante al momento de completar el acuerdo.
+        Se ejecuta en full_clean() antes de guardar.
         """
         super().clean()
-        
-        # 🎯 CORRECCIÓN: El campo real en Oferta se llama 'puntos'
-        puntos_requeridos = self.oferta.puntos if hasattr(self.oferta, 'puntos') else 0
+        # CORRECCIÓN: el campo correcto es 'valor_puntos' (no 'puntos')
+        puntos_requeridos = self.oferta.valor_puntos if hasattr(self.oferta, 'valor_puntos') else 0
 
-        if self.demandante.saldo_puntos < puntos_requeridos:
+        if self.estado == 'completado' and self.demandante.saldo_puntos < puntos_requeridos:
             raise ValidationError(
                 f"Transacción inválida: El vecino @{self.demandante.usuario.username} "
                 f"no tiene saldo suficiente. Requiere {puntos_requeridos} y posee {self.demandante.saldo_puntos}."
@@ -191,26 +196,12 @@ class AcuerdoIntercambio(models.Model):
 
     def save(self, *args, **kwargs):
         """
-        Controla el ciclo de vida del acuerdo. Al guardarse en estado 'completado',
-        realiza la transferencia atómica de 'saldo_puntos' en la base de datos.
+        Guarda el acuerdo. La transferencia de puntos se delega completamente
+        a Historial.agregar_transaccion(), que se llama desde confirmar_recepcion.
+        Por lo tanto, aquí NO se modifican saldos para evitar duplicación.
         """
-        # Ejecutamos la validación antes de realizar cualquier persistencia
         if self.estado == 'completado':
-            self.full_clean()
-            
-            puntos_a_transferir = self.oferta.puntos if hasattr(self.oferta, 'puntos') else 0
-            
-            if puntos_a_transferir > 0:
-                # Modificación de saldos
-                self.demandante.saldo_puntos -= puntos_a_transferir
-                self.ofertante.saldo_puntos += puntos_a_transferir
-                
-                # Guardado persistente de los perfiles de vecinos modificados
-                self.demandante.save()
-                self.ofertante.save()
-                
-                print(f"💰 Trueque Exitoso: Se dedujeron e intercambiaron {puntos_a_transferir} puntos.")
-
+            self.full_clean()   # solo valida, no transfiere
         super().save(*args, **kwargs)
 
     class Meta:
@@ -220,8 +211,12 @@ class AcuerdoIntercambio(models.Model):
 
     def __str__(self):
         return f"Acuerdo {self.oferta.repuesto.nombre_pieza} - {self.estado}"
-    
+
+
 class Calificacion(models.Model):
+    """
+    Calificación de un usuario por parte de otro tras una transacción.
+    """
     id_calificacion = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     transaccion = models.ForeignKey(Transaccion, on_delete=models.CASCADE, related_name='calificaciones')
     calificador = models.ForeignKey(Vecino, on_delete=models.PROTECT, related_name='calificaciones_hechas')
@@ -231,4 +226,4 @@ class Calificacion(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ['transaccion', 'calificador']  # Un usuario solo califica una vez por transacción
+        unique_together = ['transaccion', 'calificador']  # cada usuario califica una vez por transacción

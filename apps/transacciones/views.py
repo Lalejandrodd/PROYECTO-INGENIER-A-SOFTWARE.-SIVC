@@ -227,38 +227,48 @@ def solicitar_intercambio(request):
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
         return JsonResponse({"error": "No autenticado"}, status=401)
-    vecino = user.vecino
-    
+    vecino = user.vecino  # demandante
+
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"error": "JSON inválido"}, status=400)
-    
+
     oferta_id = data.get('oferta_id')
     if not oferta_id:
         return JsonResponse({"error": "Falta oferta_id"}, status=400)
-    
+
     try:
         oferta = Oferta.objects.get(id_inventario=oferta_id, estado_oferta=True)
     except Oferta.DoesNotExist:
         return JsonResponse({"error": "Oferta no encontrada o inactiva"}, status=404)
-    
+
     # No puede solicitar su propia oferta
     if oferta.usuario.vecino == vecino:
         return JsonResponse({"error": "No puedes solicitar tu propia oferta"}, status=400)
-    
+
     ofertante = oferta.usuario.vecino
-    
+
+    # ✅ VALIDACIÓN DE SALDO: el demandante debe tener puntos suficientes
+    if vecino.saldo_puntos < oferta.valor_puntos:
+        return JsonResponse({
+            "error": f"No tienes suficientes puntos. Necesitas {oferta.valor_puntos} pts y tienes {vecino.saldo_puntos} pts."
+        }, status=400)
+
     # Buscar si ya existe un acuerdo con estos tres participantes (incluyendo cancelados)
     acuerdo_existente = AcuerdoIntercambio.objects.filter(
         oferta=oferta,
         ofertante=ofertante,
         demandante=vecino
     ).first()
-    
+
     if acuerdo_existente:
-        # Si existe y está cancelado, lo reactivamos
         if acuerdo_existente.estado == 'cancelado':
+            # ✅ Verificar saldo actual al reactivar
+            if vecino.saldo_puntos < oferta.valor_puntos:
+                return JsonResponse({
+                    "error": f"No puedes reactivar este trueque. Necesitas {oferta.valor_puntos} pts y tienes {vecino.saldo_puntos} pts."
+                }, status=400)
             acuerdo_existente.estado = 'pendiente'
             acuerdo_existente.cancelacion_solicitada_por = None
             acuerdo_existente.estado_anterior = None
@@ -276,9 +286,8 @@ def solicitar_intercambio(request):
             return JsonResponse({"error": "Este trueque ya fue completado"}, status=400)
         elif acuerdo_existente.estado == 'cancelacion_pendiente':
             return JsonResponse({"error": "Hay una solicitud de cancelación pendiente para este trueque"}, status=400)
-        # Para cualquier otro estado, devolvemos error genérico
         return JsonResponse({"error": f"El acuerdo está en estado '{acuerdo_existente.estado}' y no se puede solicitar"}, status=400)
-    
+
     # Si no existe, creamos uno nuevo
     acuerdo = AcuerdoIntercambio.objects.create(
         oferta=oferta,
@@ -287,6 +296,7 @@ def solicitar_intercambio(request):
         estado='pendiente'
     )
     return JsonResponse({"success": True, "acuerdo_id": str(acuerdo.id)}, status=201)
+
 
 @require_http_methods(["GET"])
 def solicitudes_pendientes(request):
@@ -322,7 +332,7 @@ def aceptar_intercambio(request, acuerdo_id):
     user = get_user_from_session(session_id)
     if not user or not hasattr(user, 'vecino'):
         return JsonResponse({"error": "No autenticado"}, status=401)
-    vecino = user.vecino
+    vecino = user.vecino  # ofertante
 
     try:
         acuerdo = AcuerdoIntercambio.objects.get(id=acuerdo_id, estado='pendiente')
@@ -331,6 +341,14 @@ def aceptar_intercambio(request, acuerdo_id):
 
     if acuerdo.ofertante != vecino:
         return JsonResponse({"error": "No autorizado – solo el ofertante puede aceptar"}, status=403)
+
+    # ✅ VALIDACIÓN DE SALDO DEL DEMANDANTE antes de aceptar
+    demandante = acuerdo.demandante
+    puntos_requeridos = acuerdo.oferta.valor_puntos
+    if demandante.saldo_puntos < puntos_requeridos:
+        return JsonResponse({
+            "error": f"El demandante no tiene suficientes puntos. Necesita {puntos_requeridos} pts y tiene {demandante.saldo_puntos} pts."
+        }, status=400)
 
     # Cambiar estado del acuerdo a aceptado
     acuerdo.estado = 'aceptado'
@@ -344,18 +362,15 @@ def aceptar_intercambio(request, acuerdo_id):
     ).first()
 
     if transaccion_existente:
-        # Si la transacción ya está completada, no se puede reutilizar
         if transaccion_existente.completada:
             return JsonResponse({
                 "error": "Este trueque ya fue completado previamente, no se puede volver a aceptar"
             }, status=400)
-        # Si no está completada, la reutilizamos (actualizamos el campo acuerdo si es necesario)
         transaccion_existente.acuerdo = acuerdo
         transaccion_existente.save()
         transaccion = transaccion_existente
         mensaje = "Transacción existente reutilizada"
     else:
-        # Crear nueva transacción
         transaccion = Transaccion.objects.create(
             oferta=acuerdo.oferta,
             ofertante=acuerdo.ofertante,
@@ -385,7 +400,8 @@ def confirmar_recepcion(request, transaccion_id):
     """
     POST /api/confirmar-recepcion/<transaccion_id>/
     El demandante confirma que recibió el repuesto.
-    Se transfieren los puntos al ofertante y se actualizan historiales.
+    La transferencia de puntos se delega completamente a Historial.agregar_transaccion()
+    para evitar duplicación.
     """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
@@ -404,7 +420,7 @@ def confirmar_recepcion(request, transaccion_id):
     if transaccion.completada:
         return JsonResponse({"error": "Esta transacción ya fue completada"}, status=400)
 
-    # 🔒 Validación del estado del acuerdo asociado
+    # 🔒 Validación del estado del acuerdo
     if transaccion.acuerdo:
         acuerdo = transaccion.acuerdo
         if acuerdo.estado == 'cancelado':
@@ -412,32 +428,28 @@ def confirmar_recepcion(request, transaccion_id):
         if acuerdo.estado == 'cancelacion_pendiente':
             return JsonResponse({"error": "Hay una solicitud de cancelación pendiente. Resuélvela antes de confirmar recepción"}, status=400)
 
-    # 💰 Transferencia de puntos (con verificación de saldo)
-    ofertante = transaccion.ofertante
+    # 💰 Verificación de saldo antes de transferir (evita transferencia fallida)
     demandante = transaccion.demandante
     puntos = transaccion.puntos_transferidos
-
     if demandante.saldo_puntos < puntos:
         return JsonResponse({
             "error": "Saldo insuficiente",
             "message": f"El demandante no posee suficientes puntos ({demandante.saldo_puntos}) para transferir ({puntos})."
         }, status=400)
 
-    demandante.saldo_puntos -= puntos
-    ofertante.saldo_puntos += puntos
-    demandante.save()
-    ofertante.save()
-
-    # Actualizar historiales
+    # ✅ Transferencia única a través del historial
+    ofertante = transaccion.ofertante
     historial_ofertante = ofertante.historial
     historial_ofertante.agregar_transaccion(transaccion)
 
     historial_demandante = demandante.historial
     historial_demandante.agregar_transaccion(transaccion)
 
+    # Marcar transacción como completada
     transaccion.completada = True
     transaccion.save()
 
+    # Actualizar estado del acuerdo (sin transferir puntos aquí)
     if transaccion.acuerdo:
         acuerdo = transaccion.acuerdo
         acuerdo.estado = 'completado'
@@ -445,7 +457,7 @@ def confirmar_recepcion(request, transaccion_id):
 
     return JsonResponse({
         "success": True,
-        "message": "Recepción confirmada. Puntos transferidos al ofertante. Trueque completado."
+        "message": "Recepción confirmada. Puntos transferidos correctamente."
     }, status=200)
 
 
@@ -462,12 +474,11 @@ def transacciones_para_confirmar(request):
         return JsonResponse({"error": "No autenticado"}, status=401)
     vecino = user.vecino
 
-    # Filtro principal: demandante = vecino, no completada
     transacciones = Transaccion.objects.filter(
         demandante=vecino,
         completada=False
     ).filter(
-        # Si no tiene acuerdo (casos antiguos) o el acuerdo no está cancelado ni en cancelación pendiente
+        # Si no tiene acuerdo o el acuerdo no está cancelado ni en cancelación pendiente
         Q(acuerdo__isnull=True) | (
             ~Q(acuerdo__estado='cancelado') &
             ~Q(acuerdo__estado='cancelacion_pendiente')
