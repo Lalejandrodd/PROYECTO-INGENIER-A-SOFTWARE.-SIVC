@@ -12,6 +12,9 @@ except ImportError:
     pusher = None
 from django.conf import settings
 import os
+from io import BytesIO
+from PIL import Image
+from django.core.files.base import ContentFile
 # Inicializamos el cliente de pusher solo si la librería está disponible
 pusher_client = None
 if pusher is not None:
@@ -204,6 +207,16 @@ def validar_extension_imagen(value):
             'Formato no permitido. Solo se admiten archivos JPG o PNG.'
         )
 
+def validar_tamanio_imagen(value):
+    """
+    HU 7: Restricción de tamaño máximo por archivo (10 MB).
+    """
+    limite_mb = 10
+    if value.size > limite_mb * 1024 * 1024:
+        raise ValidationError(
+            f'El archivo "{value.name}" excede el límite de {limite_mb} MB.'
+        )
+
 class Fotografia(models.Model):
     """
     Maneja las evidencias visuales del repuesto.
@@ -215,11 +228,39 @@ class Fotografia(models.Model):
     )
     imagen = models.FileField(
         upload_to='ofertas/fotografias/',
-        validators=[validar_extension_imagen],
-        help_text='Solo se admiten archivos JPG o PNG.',
+        validators=[validar_extension_imagen, validar_tamanio_imagen],
+        help_text='Solo se admiten archivos JPG o PNG, máximo 10MB.',
         null=True, blank=True
     )
     fecha_carga = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # HU 7 - Procesamiento a baja resolución
+        # Lo hacemos antes de invocar a super().save()
+        if self.imagen:
+            # Abrimos la imagen con Pillow
+            img = Image.open(self.imagen)
+            
+            # Forzamos conversión a RGB para evitar problemas con PNG transparentes al guardar como JPEG
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+                
+            # Reducimos las dimensiones (ej. a 800x800 manteniendo proporciones)
+            max_size = (800, 800)
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            # Guardamos la imagen en memoria con baja calidad (70%)
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=70)
+            output.seek(0)
+            
+            # Reemplazamos el archivo original por la versión comprimida
+            nombre_base = os.path.splitext(os.path.basename(self.imagen.name))[0]
+            nuevo_nombre = f"{nombre_base}_comprimida.jpg"
+            
+            self.imagen = ContentFile(output.read(), name=nuevo_nombre)
+            
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Foto para {self.oferta.id_inventario}"

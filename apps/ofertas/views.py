@@ -217,6 +217,10 @@ def crear_oferta(request):
                 ext = os.path.splitext(imagen.name)[1].lower()
                 if ext not in EXTENSIONES_PERMITIDAS:
                     return JsonResponse({"error": f"Formato inválido en '{imagen.name}'. Solo JPG o PNG."}, status=400)
+                
+                # HU 7 - Validación de tamaño máximo (10 MB) en el controlador
+                if imagen.size > 10 * 1024 * 1024:
+                    return JsonResponse({"error": f"El archivo '{imagen.name}' excede el límite permitido de 10 MB."}, status=400)
         else:
             data = json.loads(request.body)
             repuesto_id = data.get('repuesto_id')
