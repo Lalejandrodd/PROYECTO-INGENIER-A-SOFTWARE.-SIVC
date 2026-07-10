@@ -107,12 +107,25 @@ export function UrgenciasModule({ miUsuarioId }: UrgenciasModuleProps) {
       privateChannel = pusher.subscribe(`notificaciones-vecino-${miUsuarioId}`); 
       
       privateChannel.bind('notificacion-ayuda', (data: any) => { 
-        const aceptar = window.confirm(`🚨 ¡Un vecino quiere ayudarte!\n\n${data.message}\nPostulado por: @${data.nombre_colaborador}\n\n¿Deseas aceptar el repuesto y transferir los puntos?`); 
+        // 1. Lanzamos un alert simple primero para avisar, rompiendo cualquier supresión estricta
+        alert(`🚨 ¡Un vecino se ha postulado para ayudarte con el repuesto!`);
+
+        // 2. Ejecutamos la confirmación nativa asegurando la interacción activa
+        const aceptar = window.confirm(
+          `🚨 ¡Detalles de la Postulación!\n\n` +
+          `${data.message}\n` +
+          `Postulado por: @${data.nombre_colaborador}\n\n` +
+          `¿Deseas aceptar el repuesto y transferir los puntos ahora mismo?`
+        ); 
         
+        // 🎯 CORRECCIÓN: Si el usuario cancela (o el navegador suprime), simplemente NO HACEMOS NADA.
+        // Solo enviamos el rechazo si la ventana de verdad existió y el flujo es consciente.
         if (aceptar) { 
           resolverUrgencia(data.urgencia_id, 'aceptar'); 
-        } else { 
-          resolverUrgencia(data.urgencia_id, 'rechazar'); 
+        } else {
+          obtenerUrgencias();
+          console.log("Se canceló o suprimió la ventana de confirmación, mantendremos la postulación intacta.");
+          // Removimos la ejecución obligatoria del resolverUrgencia con 'rechazar' para que no se borre sola.
         } 
       });
     }
@@ -310,9 +323,9 @@ export function UrgenciasModule({ miUsuarioId }: UrgenciasModuleProps) {
 
           return (
             <div 
-              key={urgencia.id_urgencia} 
+              key={urgencia.id_urgencia || (urgencia as any).id} 
               className={`bg-card rounded-2xl border-2 shadow-sm overflow-hidden transition-all ${colors.border}`}
-            >
+              >
               <div className={`px-5 py-3 flex items-center justify-between ${colors.bar}`}>
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-white" />
@@ -378,13 +391,14 @@ export function UrgenciasModule({ miUsuarioId }: UrgenciasModuleProps) {
               )
             )}
 
+          
             {/* 2. ESTADO REVISIÓN */}
             {urgencia.estado_tramite === 'revision' && (
-              // 🚨 Forzamos conversión a Number aquí también:
               Number(miUsuarioId) === Number(urgencia.id_vecino_creador) ? (
                 <div className="flex flex-col gap-2 w-full mt-2">
                   <p className="text-center text-xs font-medium text-amber-800 mb-1">¡Un vecino te ha ofrecido ayuda!</p>
                   <div className="flex gap-2">
+                    {/* ✨ CORREGIDO: Se mantiene la sintaxis flecha correcta */}
                     <button 
                       onClick={() => resolverUrgencia(urgencia.id_urgencia, 'aceptar')}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl font-semibold text-xs"
