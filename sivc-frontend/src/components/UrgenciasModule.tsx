@@ -369,10 +369,6 @@ export function UrgenciasModule({ miUsuarioId }: UrgenciasModuleProps) {
                   </div>
                 </div>
 
-<div className="bg-blue-900 text-white p-2 text-xs rounded mb-2">
-  Mío: {miUsuarioId} (tipo: {typeof miUsuarioId}) | 
-  Creador Card: {urgencia.id_vecino_creador} (tipo: {typeof urgencia.id_vecino_creador})
-</div>
 
             {/* 1. ESTADO LIBRE */}
             {urgencia.estado_tramite === 'libre' && (
