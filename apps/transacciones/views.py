@@ -10,6 +10,7 @@ from django.views.decorators.http import require_http_methods
 from apps.transacciones.models import Transaccion, Historial, Calificacion, AcuerdoIntercambio
 from apps.usuarios.models import Vecino, Usuario
 from apps.ofertas.models import Oferta
+from .models import Calificacion
 
 
 # ============================================================
@@ -55,7 +56,7 @@ def mi_historial(request):
     
     if not hasattr(user, 'vecino'):
         return JsonResponse({"error": "El usuario no tiene perfil de Vecino."}, status=400)
-    
+     
     try:
         vecino = user.vecino
         if not hasattr(vecino, 'historial'):
@@ -67,6 +68,7 @@ def mi_historial(request):
         import traceback
         traceback.print_exc()
         return JsonResponse({"error": f"Error al obtener el historial: {str(e)}"}, status=500)
+    
 
 
 # ============================================================
@@ -133,7 +135,7 @@ def calificar(request):
     if vecino != transaccion.ofertante and vecino != transaccion.demandante:
         return JsonResponse({"error": "No eres parte de esta transacción"}, status=403)
     
-    # ❌ EVITAR AUTOCALIFICACIÓN: el calificado no puede ser el mismo que calificador
+    # EVITAR AUTOCALIFICACIÓN: el calificado no puede ser el mismo que calificador
     if vecino.id == calificado_id:
         return JsonResponse({"error": "No puedes calificarte a ti mismo"}, status=400)
     

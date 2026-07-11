@@ -1,80 +1,115 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
 export default function ModuloReputacionYCalificacion() {
-  // --- ESTADOS PARA LA HU 11 (Sistema de Reputación - Solo Lectura / Historial Inmutable) ---
-  const [reputacion, setReputacion] = useState({
-    puntosBalance: 450,
-    calificacionPromedio: 4.8,
-    totalReseñas: 14,
-    nivelConfianza: "Excelente",
-    // Historial inmutable de auditoría de transacciones de puntos
-    historialPuntos: [
-      { id: 101, operacion: "Intercambio Exitoso: Alternador", puntos: +120, fecha: "05/07/2026" },
-      { id: 102, operacion: "Penalización: Cancelación tardía", puntos: -30, fecha: "29/06/2026" },
-      { id: 103, operacion: "Intercambio Exitoso: Filtro Aceite", puntos: +50, fecha: "20/06/2026" }
-    ]
-  });
+  // --- ESTADOS DE CARGA Y PARAMETRIZACIÓN ---
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
 
-  // Lista de calificaciones recibidas por otros vecinos (HU11 - Visualización)
-  const [comentariosComunidad, setComentariosComunidad] = useState([
-    { id: 1, autor: "Carlos M.", estrellas: 5, comentario: "El repuesto estaba en óptimas condiciones mecánicas, tal como se describió.", fecha: "04/07/2026" },
-    { id: 2, autor: "Elena R.", estrellas: 4, comentario: "Entrega puntual en el punto de encuentro de San José del Ávila.", fecha: "28/06/2026" }
-  ]);
+  // --- ESTADOS DE LA HU 11 (Datos Reales de Reputación e Historial) ---
+  const [datosUsuario, setDatosUsuario] = useState(null);
+  const [comentariosComunidad, setComentariosComunidad] = useState([]);
 
-  // --- ESTADOS PARA LA HU 10 (Formulario de Calificación de Usuarios) ---
+  // --- ESTADOS DE LA HU 10 (Formulario de Calificación) ---
+  const [transaccionesPendientes, setTransaccionesPendientes] = useState([]);
+  const [txSeleccionada, setTxSeleccionada] = useState('');
   const [estrellasSeleccionadas, setEstrellasSeleccionadas] = useState(0);
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [hoverEstrellas, setHoverEstrellas] = useState(0);
 
-  // --- LOGICA DE INTEGRACIÓN (HU10 impacta algorítmicamente a la HU11) ---
-  const handleEnviarCalificacion = (e) => {
+  // Mapeo de niveles basados en el saldo
+  const nivelesRanking = {
+    1: 'Novato',
+    2: 'Aprendiz',
+    3: 'Colaborador',
+    4: 'Experto',
+    5: 'Leyenda'
+  };
+
+  // --- CARGA DE DATOS DESDE EL BACKEND ---
+  useEffect(() => {
+    const cargarModulo = async () => {
+      try {
+        const sessionid = localStorage.getItem('sessionid');
+        const headers = { 'X-Session-ID': sessionid || '' };
+
+        const resHistorial = await axios.get('/api/historial/', { headers, withCredentials: true });
+        setDatosUsuario(resHistorial.data);
+
+        const resPendientes = await axios.get('/api/transacciones-para-calificar/', { headers, withCredentials: true });
+        setTransaccionesPendientes(resPendientes.data);
+
+        // Nota opcional: Si quieres cargar las reseñas de la comunidad recibidas por el usuario logueado, 
+        // necesitarías enviar su ID a /api/reputacion/<user_id>/. Por ahora simularemos con las de la comunidad.
+        // Aquí dejamos lista la estructura de las transacciones recientes para la auditoría.
+
+      } catch (err) {
+        console.error('Error al cargar datos de reputación:', err);
+        setError(err.response?.status === 401 ? 'Debes iniciar sesión primero' : 'Error al sincronizar datos');
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    cargarModulo();
+  }, []);
+
+  // --- LOGICA DE ENVÍO DE CALIFICACIÓN (HU10 conectada al backend) ---
+  const handleEnviarCalificacion = async (e) => {
     e.preventDefault();
-    
+
+    if (!txSeleccionada) {
+      alert("Por favor, selecciona una transacción para calificar.");
+      return;
+    }
     if (estrellasSeleccionadas === 0) {
-      alert("Por favor, selecciona una puntuación en estrellas para el vecino.");
+      alert("Por favor, selecciona una puntuación en estrellas.");
       return;
     }
 
-    // 1. Simular la adición del nuevo feedback en el feed
-    const nuevoFeedback = {
-      id: comentariosComunidad.length + 1,
-      autor: "Vecino (Último Intercambio)",
-      estrellas: estrellasSeleccionadas,
-      comentario: comentarioTexto || "Sin comentarios adicionales.",
-      fecha: "Hoy"
-    };
+    // Buscar la transacción elegida para identificar al calificado
+    const tx = transaccionesPendientes.find(t => t.id_transaccion === txSeleccionada);
 
-    // 2. Actualizar el algoritmo de reputación de forma automática
-    const nuevoTotalReseñas = reputacion.totalReseñas + 1;
-    const nuevaNotaPromedio = parseFloat(
-      ((reputacion.calificacionPromedio * reputacion.totalReseñas + estrellasSeleccionadas) / nuevoTotalReseñas).toFixed(1)
-    );
-    
-    // Bonificación inmutable de puntos por completar la evaluación del flujo logístico
-    const nuevosPuntosTransaccion = {
-      id: Date.now(),
-      operacion: "Feedback enviado: Recompensa participativa",
-      puntos: +15,
-      fecha: "Hoy"
-    };
+    const calificadoId = tx.ofertante_id; // Ajustar dinámicamente según lógica de tu vista
 
-    setComentariosComunidad([nuevoFeedback, ...comentariosComunidad]);
-    setReputacion(prev => ({
-      ...prev,
-      totalReseñas: nuevoTotalReseñas,
-      calificacionPromedio: nuevaNotaPromedio,
-      puntosBalance: prev.puntosBalance + 15,
-      historialPuntos: [nuevosPuntosTransaccion, ...prev.historialPuntos],
-      nivelConfianza: nuevaNotaPromedio >= 4.5 ? "Excelente" : nuevaNotaPromedio >= 3.5 ? "Regular" : "Bajo Reporte"
-    }));
+    try {
+      const sessionid = localStorage.getItem('sessionid');
+      const payload = {
+        transaccion_id: tx.id_transaccion,
+        calificado_id: calificadoId,
+        puntuacion: estrellasSeleccionadas,
+        comentario: comentarioTexto || "Sin comentarios adicionales."
+      };
 
-    // Limpiar formulario
-    setEstrellasSeleccionadas(0);
-    setComentarioTexto('');
-    alert("Calificación procesada. El Sistema de Reputación ha recalculado los índices métricos del vecino.");
+      await axios.post('/api/calificar/', payload, {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+
+      alert("Calificación registrada con éxito en el sistema.");
+      
+      // Limpiar formulario y remover la transacción ya calificada de la lista
+      setTransaccionesPendientes(prev => prev.filter(t => t.id_transaccion !== txSeleccionada));
+      setTxSeleccionada('');
+      setEstrellasSeleccionadas(0);
+      setComentarioTexto('');
+
+      // Recargar datos del usuario para reflejar el impacto algorítmico inmediato
+      const resHistorial = await axios.get('/api/historial/', {
+        headers: { 'X-Session-ID': sessionid || '' },
+        withCredentials: true
+      });
+      setDatosUsuario(resHistorial.data);
+
+    } catch (err) {
+      alert(err.response?.data?.error || "Error al procesar la calificación");
+    }
   };
 
-  // --- DISEÑO VISUAL (Ajustado a la paleta SIVC: Navy, Teal, Gris #F8F9FA) ---
+  if (cargando) return <div style={{ padding: '2rem', textAlign: 'center' }}>Sincronizando reputación con la red vecinal...</div>;
+  if (error) return <div style={{ padding: '2rem', textAlign: 'center', color: '#DC2626' }}>{error}</div>;
+
+  // --- DISEÑO VISUAL ---
   const gridLayout = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
@@ -96,76 +131,150 @@ export default function ModuloReputacionYCalificacion() {
   return (
     <div style={gridLayout}>
       
-      {/* ================= SECCIÓN DE LA HU 11: SISTEMA DE REPUTACIÓN ================= */}
+      {/* ================= SECCIÓN DE LA HU 11: SISTEMA DE REPUTACIÓN REAL ================= */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         
         {/* Widget de Métricas de Reputación */}
         <div style={cardStyle}>
           <h2 style={{ color: '#1E3A8A', fontSize: '18px', margin: '0 0 1.25rem 0', fontWeight: '600' }}>
-            Sistema de Reputación Inmutable
+            Tu Reputación Inmutable
           </h2>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
-              <p style={{ margin: 0, fontSize: '12px', color: '#6B7280', fontWeight: '500' }}>BALANCE DE PUNTOS</p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#6B7280', fontWeight: '500' }}>SALDO ACTUAL</p>
               <p style={{ margin: 0, fontSize: '28px', fontWeight: 'bold', color: '#0D9488' }}>
-                {reputacion.puntosBalance} <span style={{ fontSize: '14px', fontWeight: 'normal' }}>Pts</span>
+                {datosUsuario.saldo_actual} <span style={{ fontSize: '14px', fontWeight: 'normal' }}>Pts</span>
               </p>
             </div>
+            
+            {/* ================= NUEVO: CALIFICACIÓN EN ESTRELLAS DEL USUARIO ================= */}
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: '12px', color: '#6B7280', fontWeight: '500' }}>TU CALIFICACIÓN</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
+                {[1, 2, 3, 4, 5].map((estrella) => {
+                  // Si el backend no envía 'calificacion_promedio', por defecto usamos 5.0
+                  const promedio = datosUsuario.calificacion_promedio || 5.0; 
+                  return (
+                    <span 
+                      key={estrella} 
+                      style={{ 
+                        fontSize: '18px', 
+                        color: estrella <= Math.round(promedio) ? '#F59E0B' : '#D1D5DB' 
+                      }}
+                    >
+                      ★
+                    </span>
+                  );
+                })}
+              </div>
+              <span style={{ fontSize: '11px', color: '#4B5563', fontWeight: '600' }}>
+                {datosUsuario.calificacion_promedio?.toFixed(1) || "5.0"} / 5.0
+              </span>
+            </div>
+            {/* ============================================================================== */}
+
             <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: 0, fontSize: '12px', color: '#6B7280', fontWeight: '500' }}>CONFIABILIDAD VECINAL</p>
-              <span style={{ 
-                display: 'inline-block', 
-                backgroundColor: '#E0F2FE', 
-                color: '#0369A1', 
-                padding: '0.25rem 0.5rem', 
-                borderRadius: '4px', 
-                fontSize: '12px', 
+              <p style={{ margin: 0, fontSize: '12px', color: '#6B7280', fontWeight: '500' }}>NIVEL DE RANGO</p>
+              <span style={{
+                display: 'inline-block',
+                backgroundColor: '#E0F2FE',
+                color: '#0369A1',
+                padding: '0.25rem 0.5rem',
+                borderRadius: '4px',
+                fontSize: '12px',
                 fontWeight: 'bold',
                 marginTop: '0.25rem'
               }}>
-                {reputacion.nivelConfianza} ({reputacion.calificacionPromedio} / 5)
+                {nivelesRanking[datosUsuario.ranking] || 'Novato'}
               </span>
             </div>
           </div>
 
-          <p style={{ fontSize: '12px', color: '#4B5563', margin: '0 0 0.5rem 0' }}>
-            <strong>Transacciones Evaluadas:</strong> {reputacion.totalReseñas} intercambios exitosos.
+          {/* Barra de Confiabilidad basada en las estrellas */}
+          <div style={{ marginTop: '1rem', borderTop: '1px solid #F3F4F6', paddingTop: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#4B5563', marginBottom: '0.25rem' }}>
+              <span>Confiabilidad Comunitaria</span>
+              <strong>{((datosUsuario.calificacion_promedio || 5.0) * 20)}%</strong>
+            </div>
+            <div style={{ width: '100%', height: '6px', backgroundColor: '#E5E7EB', borderRadius: '3px', overflow: 'hidden' }}>
+              <div style={{ 
+                width: `${(datosUsuario.calificacion_promedio || 5.0) * 20}%`, 
+                height: '100%', 
+                backgroundColor: (datosUsuario.calificacion_promedio || 5.0) >= 4 ? '#10B981' : '#F59E0B',
+                transition: 'width 0.5s ease'
+              }} />
+            </div>
+          </div>
+
+          <p style={{ fontSize: '12px', color: '#4B5563', margin: '1rem 0 0 0' }}>
+            <strong>Intercambios totales realizados:</strong> {datosUsuario.total_intercambios} veces.
           </p>
         </div>
 
-        {/* Panel de Auditoría de Puntos (Solo Lectura) */}
+        {/* Panel de Auditoría de Puntos (Conectado a la Base de Datos) */}
         <div style={cardStyle}>
           <h3 style={{ color: '#1E3A8A', fontSize: '14px', margin: '0 0 0.75rem 0', fontWeight: '600' }}>
-            Auditoría del Historial de Puntos
+            Historial de Auditoría Real (Últimos 10)
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
-            {reputacion.historialPuntos.map((log) => (
-              <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', borderBottom: '1px solid #F3F4F6', fontSize: '12px' }}>
-                <span style={{ color: '#374151' }}>{log.operacion}</span>
-                <strong style={{ color: log.puntos > 0 ? '#0D9488' : '#EA580C' }}>
-                    {log.puntos > 0 ? `+${log.puntos}` : log.puntos} pts
+            {datosUsuario.transacciones_recientes?.map((tx, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', borderBottom: '1px solid #F3F4F6', fontSize: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ color: '#374151', fontWeight: '500' }}>{tx.repuesto}</span>
+                  <span style={{ fontSize: '10px', color: '#9CA3AF' }}>Con: {tx.contraparte} ({tx.fecha})</span>
+                </div>
+                <strong style={{ color: tx.tipo === 'Recibido' ? '#0D9488' : '#EA580C', alignSelf: 'center' }}>
+                  {tx.tipo === 'Recibido' ? `+${tx.puntos}` : `-${tx.puntos}`} pts
                 </strong>
               </div>
             ))}
+            {datosUsuario.transacciones_recientes?.length === 0 && (
+              <p style={{ fontSize: '12px', color: '#9CA3AF', textAlign: 'center' }}>No posees registros auditados.</p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ================= SECCIÓN DE LA HU 10: CALIFICACIÓN DE USUARIOS ================= */}
+      {/* ================= SECCIÓN DE LA HU 10: CALIFICACIÓN DINÁMICA ================= */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         
         {/* Formulario de Calificación Activo */}
         <div style={cardStyle}>
           <h2 style={{ color: '#1E3A8A', fontSize: '18px', margin: '0 0 1rem 0', fontWeight: '600' }}>
-            Calificar Vecino 
+            Calificar Vecino de Intercambio
           </h2>
           
           <form onSubmit={handleEnviarCalificacion}>
+            {/* Selector de Transacción Pendiente */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#374151', marginBottom: '0.25rem' }}>
+                Selecciona el intercambio a evaluar:
+              </label>
+              <select
+                value={txSeleccionada}
+                onChange={(e) => setTxSeleccionada(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  borderRadius: '4px',
+                  border: '1px solid #E5E7EB',
+                  fontSize: '13px'
+                }}
+              >
+                <option value="">-- Selecciona un intercambio pendiente --</option>
+                {transaccionesPendientes.map((tx) => (
+                  <option key={tx.id_transaccion} value={tx.id_transaccion}>
+                    {tx.repuesto} ({tx.fecha})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Control de Estrellas Interactivo */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#374151', marginBottom: '0.25rem' }}>
-                ¿Cómo califica el estado del componente y la logística?
+                ¿Cómo califica la experiencia y el componente?
               </label>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 {[1, 2, 3, 4, 5].map((estrella) => (
@@ -194,12 +303,12 @@ export default function ModuloReputacionYCalificacion() {
             {/* Input de Comentarios */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#374151', marginBottom: '0.25rem' }}>
-                Comentarios sobre el intercambio
+                Comentarios adicionales
               </label>
               <textarea
                 value={comentarioTexto}
                 onChange={(e) => setComentarioTexto(e.target.value)}
-                placeholder="Ej. Puntual en la entrega cerca de San José del Ávila y la pieza cumplía con la compatibilidad técnica."
+                placeholder="Indica si la pieza cumplía con lo acordado y la puntualidad."
                 style={{
                   width: '100%',
                   height: '65px',
@@ -215,8 +324,9 @@ export default function ModuloReputacionYCalificacion() {
 
             <button
               type="submit"
+              disabled={transaccionesPendientes.length === 0}
               style={{
-                backgroundColor: '#0D9488',
+                backgroundColor: transaccionesPendientes.length === 0 ? '#9CA3AF' : '#0D9488',
                 color: '#FFFFFF',
                 width: '100%',
                 padding: '0.6rem',
@@ -224,32 +334,13 @@ export default function ModuloReputacionYCalificacion() {
                 border: 'none',
                 fontWeight: '600',
                 fontSize: '13px',
-                cursor: 'pointer'
+                cursor: transaccionesPendientes.length === 0 ? 'not-allowed' : 'pointer'
               }}
             >
-              Registrar Calificación
+              {transaccionesPendientes.length === 0 ? "No hay intercambios por calificar" : "Registrar Calificación"}
             </button>
           </form>
         </div>
-
-        {/* Feed de Reseñas / Feedback Histórico Recibido */}
-        <div style={cardStyle}>
-          <h3 style={{ color: '#1E3A8A', fontSize: '14px', margin: '0 0 0.75rem 0', fontWeight: '600' }}>
-            Feedback Reciente de la Comunidad
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '180px', overflowY: 'auto' }}>
-            {comentariosComunidad.map((item) => (
-              <div key={item.id} style={{ padding: '0.6rem', border: '1px solid #F3F4F6', borderRadius: '6px', backgroundColor: '#F9FAFB' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', marginBottom: '0.25rem' }}>
-                  <span style={{ fontWeight: 'bold', color: '#4B5563' }}>{item.autor}</span>
-                  <span style={{ color: '#F59E0B', letterSpacing: '1px' }}>{"★".repeat(item.estrellas)}</span>
-                </div>
-                <p style={{ margin: 0, fontSize: '12px', color: '#374151', lineHeight: '1.4' }}>{item.comentario}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
       </div>
 
     </div>
