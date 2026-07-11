@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone  # ← NUEVA IMPORTACIÓN PARA ZONA HORARIA
 from apps.usuarios.models import Vecino
 from apps.ofertas.models import Oferta
 
@@ -128,11 +129,16 @@ class Historial(models.Model):
         self.vecino.save()
 
     def calcular_resumen_puntos(self):
+        """
+        Retorna un resumen del historial con fechas convertidas a la zona horaria local.
+        """
         transacciones_list = []
         for t in self.transacciones.all().order_by('-fecha_exito'):
+            # ✅ CONVERSIÓN A ZONA HORARIA LOCAL (Caracas)
+            fecha_local = timezone.localtime(t.fecha_exito)
             transacciones_list.append({
                 'id_transaccion': str(t.id_transaccion),
-                'fecha': t.fecha_exito.strftime('%d/%m/%Y %H:%M'),
+                'fecha': fecha_local.strftime('%d/%m/%Y %H:%M'),
                 'puntos': t.puntos_transferidos,
                 'tipo': 'Recibido' if t.ofertante == self.vecino else 'Entregado',
                 'contraparte': t.demandante.usuario.nombre_completo if t.ofertante == self.vecino else t.ofertante.usuario.nombre_completo,
