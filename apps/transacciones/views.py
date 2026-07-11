@@ -222,6 +222,7 @@ def solicitar_intercambio(request):
     POST /api/solicitar/
     Un vecino solicita un trueque sobre una oferta activa.
     Si ya existía un acuerdo cancelado con los mismos participantes, lo reactiva.
+    Se valida que el demandante tenga saldo suficiente.
     """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
@@ -327,6 +328,7 @@ def aceptar_intercambio(request, acuerdo_id):
     """
     POST /api/aceptar/<acuerdo_id>/
     El ofertante acepta el trueque. Si ya existe una transacción para este acuerdo (por ejemplo, si fue cancelado y reactivado), se reutiliza.
+    Se valida que el demandante tenga saldo suficiente en el momento de la aceptación.
     """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)
@@ -401,7 +403,7 @@ def confirmar_recepcion(request, transaccion_id):
     POST /api/confirmar-recepcion/<transaccion_id>/
     El demandante confirma que recibió el repuesto.
     La transferencia de puntos se delega completamente a Historial.agregar_transaccion()
-    para evitar duplicación.
+    para evitar duplicación. Se valida saldo antes de transferir.
     """
     session_id = request.headers.get('X-Session-ID')
     user = get_user_from_session(session_id)

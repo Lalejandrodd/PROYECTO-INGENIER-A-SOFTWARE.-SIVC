@@ -160,8 +160,8 @@ class AcuerdoIntercambio(models.Model):
         ('aceptado', 'Aceptado'),
         ('rechazado', 'Rechazado'),
         ('completado', 'Completado'),
-        ('cancelado', 'Cancelado'),                     # ← estado final
-        ('cancelacion_pendiente', 'Cancelación Pendiente'),  # ← solicitud en curso
+        ('cancelado', 'Cancelado'),
+        ('cancelacion_pendiente', 'Cancelación Pendiente'),
     )
     oferta = models.ForeignKey(Oferta, on_delete=models.PROTECT, related_name='acuerdos')
     ofertante = models.ForeignKey(Vecino, on_delete=models.PROTECT, related_name='acuerdos_como_ofertante')
@@ -179,31 +179,6 @@ class AcuerdoIntercambio(models.Model):
     )
     estado_anterior = models.CharField(max_length=25, blank=True, null=True)
 
-    def clean(self):
-        """
-        Validación de saldo suficiente del demandante al momento de completar el acuerdo.
-        Se ejecuta en full_clean() antes de guardar.
-        """
-        super().clean()
-        # CORRECCIÓN: el campo correcto es 'valor_puntos' (no 'puntos')
-        puntos_requeridos = self.oferta.valor_puntos if hasattr(self.oferta, 'valor_puntos') else 0
-
-        if self.estado == 'completado' and self.demandante.saldo_puntos < puntos_requeridos:
-            raise ValidationError(
-                f"Transacción inválida: El vecino @{self.demandante.usuario.username} "
-                f"no tiene saldo suficiente. Requiere {puntos_requeridos} y posee {self.demandante.saldo_puntos}."
-            )
-
-    def save(self, *args, **kwargs):
-        """
-        Guarda el acuerdo. La transferencia de puntos se delega completamente
-        a Historial.agregar_transaccion(), que se llama desde confirmar_recepcion.
-        Por lo tanto, aquí NO se modifican saldos para evitar duplicación.
-        """
-        if self.estado == 'completado':
-            self.full_clean()   # solo valida, no transfiere
-        super().save(*args, **kwargs)
-
     class Meta:
         unique_together = ['oferta', 'ofertante', 'demandante']
         verbose_name = "Acuerdo de Intercambio"
@@ -211,6 +186,8 @@ class AcuerdoIntercambio(models.Model):
 
     def __str__(self):
         return f"Acuerdo {self.oferta.repuesto.nombre_pieza} - {self.estado}"
+
+    # ⚠️ No se incluye clean() ni save() con lógica de transferencia para evitar duplicación.
 
 
 class Calificacion(models.Model):
@@ -226,4 +203,4 @@ class Calificacion(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ['transaccion', 'calificador']  # cada usuario califica una vez por transacción
+        unique_together = ['transaccion', 'calificador']
