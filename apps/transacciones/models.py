@@ -144,7 +144,9 @@ class Historial(models.Model):
                 'contraparte': t.demandante.usuario.nombre_completo if t.ofertante == self.vecino else t.ofertante.usuario.nombre_completo,
                 'repuesto': t.oferta.repuesto.nombre_pieza
             })
+            
         return {
+            "id": self.vecino.id,
             'vecino': self.vecino.usuario.nombre_completo,
             'ranking': self.vecino.ranking,
             'saldo_actual': self.vecino.saldo_puntos,

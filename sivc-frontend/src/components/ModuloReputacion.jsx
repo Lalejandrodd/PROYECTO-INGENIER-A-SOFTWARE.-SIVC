@@ -8,7 +8,7 @@ export default function ModuloReputacionYCalificacion() {
 
   // --- ESTADOS DE LA HU 11 (Datos Reales de Reputación e Historial) ---
   const [datosUsuario, setDatosUsuario] = useState(null);
-  const [comentariosComunidad, setComentariosComunidad] = useState([]);
+  const [comentariosComunidad, setComentariosComunidad] = useState([]); // <-- Conectado al backend ahora
 
   // --- ESTADOS DE LA HU 10 (Formulario de Calificación) ---
   const [transaccionesPendientes, setTransaccionesPendientes] = useState([]);
@@ -16,6 +16,7 @@ export default function ModuloReputacionYCalificacion() {
   const [estrellasSeleccionadas, setEstrellasSeleccionadas] = useState(0);
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [hoverEstrellas, setHoverEstrellas] = useState(0);
+  const [datosReputacion, setDatosReputacion] = useState(null);
 
   // Mapeo de niveles basados en el saldo
   const nivelesRanking = {
@@ -33,15 +34,19 @@ export default function ModuloReputacionYCalificacion() {
         const sessionid = localStorage.getItem('sessionid');
         const headers = { 'X-Session-ID': sessionid || '' };
 
+        // 1. Cargar historial del usuario logueado
         const resHistorial = await axios.get('/api/historial/', { headers, withCredentials: true });
         setDatosUsuario(resHistorial.data);
 
+        // 2. Cargar transacciones pendientes por califcar
         const resPendientes = await axios.get('/api/transacciones-para-calificar/', { headers, withCredentials: true });
         setTransaccionesPendientes(resPendientes.data);
 
-        // Nota opcional: Si quieres cargar las reseñas de la comunidad recibidas por el usuario logueado, 
-        // necesitarías enviar su ID a /api/reputacion/<user_id>/. Por ahora simularemos con las de la comunidad.
-        // Aquí dejamos lista la estructura de las transacciones recientes para la auditoría.
+        const vecinoId = resHistorial.data.id || resHistorial.data.vecino_id;
+        if (vecinoId) {
+          const resReputacion = await axios.get(`/api/reputacion/${vecinoId}/`, { headers, withCredentials: true });
+          setComentariosComunidad(resReputacion.data.calificaciones || []);
+        }
 
       } catch (err) {
         console.error('Error al cargar datos de reputación:', err);
@@ -52,7 +57,40 @@ export default function ModuloReputacionYCalificacion() {
     };
 
     cargarModulo();
+
+    const obtenerDatosCompletos = async () => {
+      try {
+        const sessionid = localStorage.getItem('sessionid');
+        const configuracion = {
+          headers: { 'X-Session-ID': sessionid || '' },
+          withCredentials: true
+        };
+
+        // 1. Traemos el historial (para obtener los datos y el ID del usuario)
+        const resHistorial = await axios.get('/api/historial/', configuracion);
+        setDatosUsuario(resHistorial.data);
+
+        // 2. Usamos el ID obtenido para consultar la reputación real del usuario
+        const userId = resHistorial.data.id;
+        if (userId) {
+          const resReputacion = await axios.get(`/api/reputacion/${userId}/`, configuracion);
+          setDatosReputacion(resReputacion.data);
+          
+          // Opcional: Ponemos un log para que veas en la consola la estructura exacta de la reputación
+          console.log("Datos de Reputación recibidos:", resReputacion.data);
+        }
+
+      } catch (error) {
+        console.error("Error al cargar los datos en la pestaña:", error);
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    obtenerDatosCompletos();
   }, []);
+
+  
 
   // --- LOGICA DE ENVÍO DE CALIFICACIÓN (HU10 conectada al backend) ---
   const handleEnviarCalificacion = async (e) => {
@@ -67,10 +105,8 @@ export default function ModuloReputacionYCalificacion() {
       return;
     }
 
-    // Buscar la transacción elegida para identificar al calificado
     const tx = transaccionesPendientes.find(t => t.id_transaccion === txSeleccionada);
-
-    const calificadoId = tx.ofertante_id; // Ajustar dinámicamente según lógica de tu vista
+    const calificadoId = tx.ofertante_id; 
 
     try {
       const sessionid = localStorage.getItem('sessionid');
@@ -85,16 +121,15 @@ export default function ModuloReputacionYCalificacion() {
         headers: { 'X-Session-ID': sessionid || '' },
         withCredentials: true
       });
-
+      
       alert("Calificación registrada con éxito en el sistema.");
       
-      // Limpiar formulario y remover la transacción ya calificada de la lista
       setTransaccionesPendientes(prev => prev.filter(t => t.id_transaccion !== txSeleccionada));
       setTxSeleccionada('');
       setEstrellasSeleccionadas(0);
       setComentarioTexto('');
 
-      // Recargar datos del usuario para reflejar el impacto algorítmico inmediato
+      // Recargar datos para ver reflejados los cambios
       const resHistorial = await axios.get('/api/historial/', {
         headers: { 'X-Session-ID': sessionid || '' },
         withCredentials: true
@@ -128,6 +163,23 @@ export default function ModuloReputacionYCalificacion() {
     boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
   };
 
+  let promedioFinal = 5.0;
+  let totalComentarios = 0;
+
+  if (datosReputacion) {
+    // Si el backend ya calcula el promedio directamente, búscalo aquí (ej: datosReputacion.promedio)
+    // Ajusta el nombre de la propiedad según lo que veas en el console.log
+    if (datosReputacion.promedio !== undefined) {
+      promedioFinal = Number(datosReputacion.promedio);
+    } else if (datosReputacion.calificaciones && datosReputacion.calificaciones.length > 0) {
+      // Si el backend manda la lista, la promediamos en el front
+      const lista = datosReputacion.calificaciones;
+      const suma = lista.reduce((sum, c) => sum + Number(c.puntuacion || c.estrellas || 0), 0);
+      promedioFinal = Math.round((suma / lista.length) * 10) / 10;
+      totalComentarios = lista.length;
+    }
+  }
+
   return (
     <div style={gridLayout}>
       
@@ -148,31 +200,25 @@ export default function ModuloReputacionYCalificacion() {
               </p>
             </div>
             
-            {/* ================= NUEVO: CALIFICACIÓN EN ESTRELLAS DEL USUARIO ================= */}
             <div style={{ textAlign: 'center' }}>
               <p style={{ margin: 0, fontSize: '12px', color: '#6B7280', fontWeight: '500' }}>TU CALIFICACIÓN</p>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
-                {[1, 2, 3, 4, 5].map((estrella) => {
-                  // Si el backend no envía 'calificacion_promedio', por defecto usamos 5.0
-                  const promedio = datosUsuario.calificacion_promedio || 5.0; 
-                  return (
-                    <span 
-                      key={estrella} 
-                      style={{ 
-                        fontSize: '18px', 
-                        color: estrella <= Math.round(promedio) ? '#F59E0B' : '#D1D5DB' 
-                      }}
-                    >
-                      ★
-                    </span>
-                  );
-                })}
+                {[1, 2, 3, 4, 5].map((estrella) => (
+                  <span
+                    key={estrella}
+                    style={{
+                      color: estrella <= Math.round(promedioFinal) ? '#F59E0B' : '#D1D5DB',
+                      fontSize: '1.75rem'
+                    }}
+                  >
+                    ★
+                  </span>
+                ))}
+                <span className="text-sm font-bold text-gray-600 ml-2">
+                  {promedioFinal.toFixed(1)} / 5.0
+                </span>
               </div>
-              <span style={{ fontSize: '11px', color: '#4B5563', fontWeight: '600' }}>
-                {datosUsuario.calificacion_promedio?.toFixed(1) || "5.0"} / 5.0
-              </span>
             </div>
-            {/* ============================================================================== */}
 
             <div style={{ textAlign: 'right' }}>
               <p style={{ margin: 0, fontSize: '12px', color: '#6B7280', fontWeight: '500' }}>NIVEL DE RANGO</p>
@@ -191,28 +237,12 @@ export default function ModuloReputacionYCalificacion() {
             </div>
           </div>
 
-          {/* Barra de Confiabilidad basada en las estrellas */}
-          <div style={{ marginTop: '1rem', borderTop: '1px solid #F3F4F6', paddingTop: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#4B5563', marginBottom: '0.25rem' }}>
-              <span>Confiabilidad Comunitaria</span>
-              <strong>{((datosUsuario.calificacion_promedio || 5.0) * 20)}%</strong>
-            </div>
-            <div style={{ width: '100%', height: '6px', backgroundColor: '#E5E7EB', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{ 
-                width: `${(datosUsuario.calificacion_promedio || 5.0) * 20}%`, 
-                height: '100%', 
-                backgroundColor: (datosUsuario.calificacion_promedio || 5.0) >= 4 ? '#10B981' : '#F59E0B',
-                transition: 'width 0.5s ease'
-              }} />
-            </div>
-          </div>
-
           <p style={{ fontSize: '12px', color: '#4B5563', margin: '1rem 0 0 0' }}>
             <strong>Intercambios totales realizados:</strong> {datosUsuario.total_intercambios} veces.
           </p>
         </div>
 
-        {/* Panel de Auditoría de Puntos (Conectado a la Base de Datos) */}
+        {/* Panel de Auditoría de Puntos */}
         <div style={cardStyle}>
           <h3 style={{ color: '#1E3A8A', fontSize: '14px', margin: '0 0 0.75rem 0', fontWeight: '600' }}>
             Historial de Auditoría Real (Últimos 10)
@@ -246,7 +276,6 @@ export default function ModuloReputacionYCalificacion() {
           </h2>
           
           <form onSubmit={handleEnviarCalificacion}>
-            {/* Selector de Transacción Pendiente */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#374151', marginBottom: '0.25rem' }}>
                 Selecciona el intercambio a evaluar:
@@ -271,7 +300,6 @@ export default function ModuloReputacionYCalificacion() {
               </select>
             </div>
 
-            {/* Control de Estrellas Interactivo */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#374151', marginBottom: '0.25rem' }}>
                 ¿Cómo califica la experiencia y el componente?
@@ -300,7 +328,6 @@ export default function ModuloReputacionYCalificacion() {
               </div>
             </div>
 
-            {/* Input de Comentarios */}
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#374151', marginBottom: '0.25rem' }}>
                 Comentarios adicionales
@@ -341,8 +368,45 @@ export default function ModuloReputacionYCalificacion() {
             </button>
           </form>
         </div>
-      </div>
 
+        {/* ================= NUEVA SECCIÓN: COMENTARIOS Y RESEÑAS RECIBIDAS ================= */}
+        <div style={cardStyle}>
+          <h2 style={{ color: '#1E3A8A', fontSize: '16px', margin: '0 0 1rem 0', fontWeight: '600' }}>
+            Opiniones de la Comunidad
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '250px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+            {comentariosComunidad.map((resena) => (
+              <div key={resena.id} style={{ borderBottom: '1px solid #F3F4F6', paddingBottom: '0.75rem', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                  <strong style={{ color: '#374151' }}>{resena.calificador}</strong>
+                  <span style={{ fontSize: '11px', color: '#9CA3AF' }}>{resena.fecha}</span>
+                </div>
+                
+                {/* Estrellas de la reseña individual */}
+                <div style={{ display: 'flex', gap: '0.1rem', marginBottom: '0.25rem' }}>
+                  {[1, 2, 3, 4, 5].map((num) => (
+                    <span key={num} style={{ color: num <= resena.puntuacion ? '#F59E0B' : '#D1D5DB', fontSize: '14px' }}>
+                      ★
+                    </span>
+                  ))}
+                </div>
+                
+                <p style={{ margin: 0, color: '#4B5563', fontStyle: 'italic', lineHeight: '1.4' }}>
+                  "{resena.comentario}"
+                </p>
+              </div>
+            ))}
+
+            {comentariosComunidad.length === 0 && (
+              <p style={{ fontSize: '13px', color: '#9CA3AF', textAlign: 'center', margin: '1rem 0' }}>
+                Aún no has recibido comentarios de otros vecinos.
+              </p>
+            )}
+          </div>
+        </div>
+        {/* ================================================================================= */}
+
+      </div>
     </div>
   );
 }
