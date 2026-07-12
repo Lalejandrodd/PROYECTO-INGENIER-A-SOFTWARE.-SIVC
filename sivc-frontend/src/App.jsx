@@ -11,7 +11,11 @@ import APP_CONFIG from './config';
 import logo from './assets/logo.svg';
 import { UrgenciasModule } from './components/UrgenciasModule';
 import fondoImg from './assets/fondo.jpg';
-import fondo2Img from './assets/fondo2.jpg'; // Asegúrate de tener esta imagen
+import fondo2Img from './assets/fondo2.jpg';
+
+// rutas de los favicons para el modo claro y oscuro
+import faviconLight from './assets/favicon.ico';
+import faviconDark from './assets/favicon2.ico';
 
 function App() {
   const [usuario, setUsuario] = useState(null);
@@ -44,6 +48,32 @@ function App() {
       }
     };
     verificarSesion();
+  }, []);
+
+  // ⭐ Cambiar favicon según el tema del sistema (usando los imports de src/assets/)
+  useEffect(() => {
+    const updateFavicon = (isDark) => {
+      const icon = isDark ? faviconDark : faviconLight;
+      // Buscar cualquier link de favicon existente o crear uno nuevo
+      let link = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'shortcut icon';
+        link.type = 'image/x-icon';
+        document.head.appendChild(link);
+      }
+      link.href = icon;
+    };
+
+    const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    updateFavicon(darkModeMediaQuery.matches);
+
+    const handler = (e) => updateFavicon(e.matches);
+    darkModeMediaQuery.addEventListener('change', handler);
+
+    return () => {
+      darkModeMediaQuery.removeEventListener('change', handler);
+    };
   }, []);
 
   const handleLogin = (userData) => {
@@ -96,7 +126,6 @@ function App() {
     return null;
   }
 
-  // Cambiar fondo según la vista actual (usa fondo2.jpg solo en Publicar Oferta)
   const fondoActual = vistaActual === 'registrar' ? fondo2Img : fondoImg;
 
   const navItems = [
@@ -110,27 +139,30 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      {/* Barra de navegación fija en la parte superior */}
-      <nav className="fixed top-0 left-0 w-full z-50 bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-200/50 px-6 py-3 flex flex-wrap items-center justify-between">
+      {/* Barra de navegación con nuevo diseño */}
+      <nav className="fixed top-0 left-0 w-full z-50 bg-[#182234] shadow-sm border-b border-gray-700 px-6 py-3 flex flex-wrap items-center justify-between">
         <div className="flex items-center gap-2">
           <img src={logo} alt="Logo" className="h-10 w-auto" />
-          <h1 className="text-xl font-bold text-blue-600">{APP_CONFIG.nombre}</h1>
+          <h1 className="text-xl font-bold text-white">{APP_CONFIG.nombre}</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-700">
+        <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-300">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setVistaActual(item.id)}
               className={`relative px-1 py-1 transition-all duration-200 ${
                 vistaActual === item.id
-                  ? 'text-blue-600 after:absolute after:left-0 after:-bottom-1 after:w-full after:h-0.5 after:bg-blue-600 after:rounded-full'
-                  : 'hover:text-blue-500 hover:after:absolute hover:after:left-0 hover:after:-bottom-1 hover:after:w-full hover:after:h-0.5 hover:after:bg-blue-400/50 hover:after:rounded-full'
+                  ? 'text-white after:absolute after:left-0 after:-bottom-1 after:w-full after:h-0.5 after:bg-blue-400 after:rounded-full'
+                  : 'hover:text-white hover:after:absolute hover:after:left-0 hover:after:-bottom-1 hover:after:w-full hover:after:h-0.5 hover:after:bg-blue-400/50 hover:after:rounded-full'
               }`}
             >
               {item.label}
             </button>
           ))}
-          <button onClick={handleLogout} className="text-gray-500 hover:text-red-500 transition-colors duration-200">
+          <button
+            onClick={handleLogout}
+            className="text-gray-400 hover:text-red-400 transition-colors duration-200"
+          >
             Salir
           </button>
         </div>
@@ -138,7 +170,7 @@ function App() {
 
       {/* Fondo dinámico con parallax */}
       <div
-        className="min-h-screen pt-[72px]" // Ajusta según la altura de la barra
+        className="min-h-screen pt-[72px]"
         style={{
           backgroundImage: `url(${fondoActual})`,
           backgroundAttachment: 'fixed',
