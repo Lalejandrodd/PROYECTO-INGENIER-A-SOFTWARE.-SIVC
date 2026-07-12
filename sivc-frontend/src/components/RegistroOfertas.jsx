@@ -490,20 +490,6 @@ export default function RegistroOfertas() {
                   </p>
                 </div>
 
-                {/* Valor calculado (último resultado) */}
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-bold text-blue-900 text-sm">Último resultado guardado</h4>
-                    <p className="text-xs text-blue-700">Procesado por el Mediador</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-2xl font-extrabold text-blue-900">
-                      {valorCalculado || '---'}
-                    </span>
-                    <span className="text-xs block text-blue-900">Puntos</span>
-                  </div>
-                </div>
-
                 <button
                   type="submit"
                   disabled={cargandoOferta}
