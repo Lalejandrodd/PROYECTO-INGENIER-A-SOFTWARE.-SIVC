@@ -5,7 +5,11 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.sessions.models import Session
 from apps.usuarios.models import Vecino, Usuario
 from apps.chat.services import ChatService
+from config.settings import pusher_client  # <-- Asegúrate de que esta importación exista
 
+# ----------------------------------------------------------------------
+# HELPER: Obtener vecino desde sessionid en header
+# ----------------------------------------------------------------------
 def _get_vecino_from_session(request):
     session_id = request.headers.get('X-Session-ID')
     if not session_id:
@@ -21,6 +25,10 @@ def _get_vecino_from_session(request):
         pass
     return None
 
+
+# ----------------------------------------------------------------------
+# ENDPOINTS EXISTENTES
+# ----------------------------------------------------------------------
 @csrf_exempt
 @require_http_methods(["POST"])
 def iniciar_conversacion(request):
@@ -43,6 +51,7 @@ def iniciar_conversacion(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def enviar_mensaje(request):
@@ -58,6 +67,35 @@ def enviar_mensaje(request):
             return JsonResponse({"error": "conversacion_id y texto son requeridos"}, status=400)
 
         mensaje = ChatService.enviar_mensaje(conversacion_id, vecino, texto)
+        print(f"✅ Mensaje guardado: {mensaje.id_mensaje} - {mensaje.texto[:30]}...")
+
+        # ------------------------------------------------------------------
+        # 🚀 NOTIFICACIÓN PUSHER AL DESTINATARIO
+        # ------------------------------------------------------------------
+        conversacion = mensaje.conversacion
+        acuerdo = conversacion.acuerdo
+        ofertante = acuerdo.ofertante
+        demandante = acuerdo.demandante
+        destinatario = demandante if vecino == ofertante else ofertante
+
+        print(f"📨 Enviando evento Pusher a private-user-{destinatario.id}")
+        print(f"   Mensaje: {mensaje.texto[:50]}...")
+
+        pusher_client.trigger(
+            f'private-user-{destinatario.id}',
+            'nuevo-mensaje',
+            {
+                'conversacion_id': str(conversacion.id_conversacion),
+                'emisor': mensaje.emisor.usuario.username,
+                'emisor_nombre': mensaje.emisor.usuario.nombre_completo,
+                'repuesto': acuerdo.oferta.repuesto.nombre_pieza,
+                'texto': mensaje.texto,
+                'fecha': mensaje.fecha_envio.isoformat(),
+                'mensaje_id': str(mensaje.id_mensaje),
+            }
+        )
+        print("✅ Evento enviado a Pusher")
+
         return JsonResponse({
             "success": True,
             "mensaje": {
@@ -71,7 +109,11 @@ def enviar_mensaje(request):
             }
         }, status=201)
     except Exception as e:
+        print(f"❌ Error en enviar_mensaje: {e}")
+        import traceback
+        traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=400)
+
 
 @require_http_methods(["GET"])
 def historial_mensajes(request, conversacion_id):
@@ -96,6 +138,7 @@ def historial_mensajes(request, conversacion_id):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
+
 @require_http_methods(["GET"])
 def mis_conversaciones(request):
     vecino = _get_vecino_from_session(request)
@@ -114,6 +157,7 @@ def mis_conversaciones(request):
             "fecha_inicio": conv.fecha_inicio.isoformat()
         })
     return JsonResponse({"conversaciones": data}, status=200)
+
 
 # PRUEBA, QUITAR DESPUÉS
 @csrf_exempt
@@ -144,3 +188,61 @@ def crear_acuerdo_prueba(request):
     if created:
         ChatService.crear_conversacion_si_es_posible(str(acuerdo.id))
     return JsonResponse({"success": True, "acuerdo_id": str(acuerdo.id)})
+
+
+# ----------------------------------------------------------------------
+# 🆕 NUEVO ENDPOINT PARA AUTENTICACIÓN DE CANALES PRIVADOS DE PUSHER (CORREGIDO)
+# ----------------------------------------------------------------------
+@csrf_exempt
+@require_http_methods(["POST"])
+def pusher_auth(request):
+    print("🔐 Recibida solicitud de autenticación Pusher")
+    print(f"   Headers: {request.headers}")
+    print(f"   Body: {request.body}")
+
+    session_id = request.headers.get('X-Session-ID')
+    print(f"   Session ID: {session_id}")
+
+    if not session_id:
+        print("❌ No session ID")
+        return JsonResponse({'error': 'No session'}, status=401)
+
+    try:
+        session = Session.objects.get(session_key=session_id)
+        user_id = session.get_decoded().get('_auth_user_id')
+        print(f"   User ID from session: {user_id}")
+        if not user_id:
+            raise ValueError('No user in session')
+        user = Usuario.objects.get(id=user_id)
+        vecino = Vecino.objects.get(usuario=user)
+        print(f"   Vecino autenticado: ID={vecino.id}, user={vecino.usuario.username}")
+    except Exception as e:
+        print(f"❌ Error recuperando vecino: {e}")
+        return JsonResponse({'error': 'Invalid session'}, status=401)
+
+    # Obtener parámetros del POST (form-urlencoded)
+    channel_name = request.POST.get('channel_name')
+    socket_id = request.POST.get('socket_id')
+    print(f"   channel_name: {channel_name}, socket_id: {socket_id}")
+
+    if not channel_name or not socket_id:
+        print("❌ Missing parameters")
+        return JsonResponse({'error': 'Missing parameters'}, status=400)
+
+    # Validar que el canal sea privado y pertenezca al usuario autenticado
+    expected_channel = f'private-user-{vecino.id}'
+    print(f"   Expected channel: {expected_channel}")
+    if channel_name != expected_channel:
+        print(f"❌ Channel mismatch: {channel_name} != {expected_channel}")
+        return JsonResponse({'error': 'Unauthorized channel'}, status=403)
+
+    try:
+        auth_response = pusher_client.authenticate(
+            channel=channel_name,
+            socket_id=socket_id
+        )
+        print("✅ Autenticación exitosa")
+        return JsonResponse(auth_response)
+    except Exception as e:
+        print(f"❌ Error en autenticación con Pusher: {e}")
+        return JsonResponse({'error': str(e)}, status=500)

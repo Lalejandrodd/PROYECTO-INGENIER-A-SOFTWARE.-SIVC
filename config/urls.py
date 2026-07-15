@@ -1,21 +1,5 @@
 """
 URL configuration for config project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/6.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-"""
-URL configuration for config project.
 """
 import json
 
@@ -28,6 +12,7 @@ from django.contrib.auth.hashers import make_password
 from django.contrib.auth import authenticate, login
 
 from apps.usuarios.models import Usuario, Vecino
+from apps.chat.views import pusher_auth  # 👈 Importar la vista de autenticación de Pusher
 
 
 # ============================================
@@ -63,6 +48,7 @@ def login_api(request):
             }, status=401)
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
 
 # ============================================
 # ENDPOINT DE REGISTRO DE USUARIO
@@ -114,30 +100,8 @@ def registrar_usuario(request):
 
 
 # ============================================
-# ENDPOINT DE VERIFICACIÓN DE SESIÓN
+# ENDPOINT DE VERIFICACIÓN DE SESIÓN (con user_id)
 # ============================================
-# @csrf_exempt
-# def verificar_sesion(request):
-#     session_id = request.headers.get('X-Session-ID')
-    
-#     if session_id:
-#         from django.contrib.sessions.models import Session
-#         try:
-#             session = Session.objects.get(session_key=session_id)
-#             user_id = session.get_decoded().get('_auth_user_id')
-#             if user_id:
-#                 from apps.usuarios.models import Usuario
-#                 user = Usuario.objects.get(id=user_id)
-#                 return JsonResponse({
-#                     'authenticated': True,
-#                     'username': user.username,
-#                     'is_superuser': user.is_superuser
-#                 })
-#         except Exception as e:
-#             print(f"Error al recuperar sesión: {e}")
-    
-#     return JsonResponse({'authenticated': False}, status=401)
-
 @csrf_exempt
 def verificar_sesion(request):
     session_id = request.headers.get('X-Session-ID')
@@ -150,15 +114,19 @@ def verificar_sesion(request):
             if user_id:
                 from apps.usuarios.models import Usuario
                 user = Usuario.objects.get(id=user_id)
+                vecino = user.vecino if hasattr(user, 'vecino') else None
                 return JsonResponse({
                     'authenticated': True,
                     'username': user.username,
-                    'is_superuser': user.is_superuser
+                    'is_superuser': user.is_superuser,
+                    'user_id': str(vecino.id) if vecino else None  # ← NUEVO
                 })
         except Exception as e:
             print(f"Error al recuperar sesión: {e}")
     
     return JsonResponse({'authenticated': False}, status=401)
+
+
 # ============================================
 # ENDPOINT DE LOGOUT
 # ============================================
@@ -181,6 +149,9 @@ urlpatterns = [
     path('api/registrar-usuario/', registrar_usuario),
     path('api/verificar/', verificar_sesion),
     path('api/logout/', logout_api),
+    
+    # 👇 RUTA DE AUTENTICACIÓN DE PUSHER (fuera de chat para que coincida con el frontend)
+    path('api/pusher/auth/', pusher_auth, name='pusher-auth'),  # <-- NUEVA
     
     # Apps del proyecto
     path('api/', include('apps.ofertas.urls')),        # buscar/, crear/, repuestos/
