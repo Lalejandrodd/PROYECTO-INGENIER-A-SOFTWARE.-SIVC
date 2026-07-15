@@ -1,0 +1,228 @@
+@startuml Diagrama_de_Clases_Sincronizado_Completo
+
+' --- CONFIGURACIÓN VISUAL Y ARQUITECTÓNICA ---
+skinparam classAttributeIconSize 0
+skinparam nodesep 75
+skinparam ranksep 75
+skinparam linetype ortho
+skinparam groupInheritance 2
+hide circle
+
+' --- GESTIÓN DE IDENTIDAD Y SEGURIDAD ---
+class Usuario {
+    + id_usuario: String
+    + nombre_completo: String
+    + email: String
+    - password: String
+    + iniciar_sesion(): Boolean
+}
+
+class Vecino {
+    + residencia: String
+    + saldo_puntos: Float = 0.0
+    + ranking: Integer = 0
+    + registrar_oferta(datos_repuesto, datos_logistica, lista_fotos)
+    + realizar_busqueda(filtros): Oferta[]
+    + calificar_ofertante(puntuacion)
+}
+
+class Admin {
+    + nivel_acceso: Integer = 1
+    + nivel_permiso: String
+    + vincular_compatibilidad(repuesto, vehiculo)
+    + gestionar_catalogo()
+    + auditar_transacciones()
+    + moderar_usuario(id_usuario): Boolean
+}
+
+' Restricción formal de generalización Disjoint asociada a la clase base
+note top of Usuario
+  {disjoint}
+  Un Usuario registrado solo puede 
+  pertenecer a una subclase activa (Vecino o Admin)
+end note
+
+' --- CATÁLOGO DE REPUESTOS Y VEHÍCULOS (HU 3) ---
+class Repuesto {
+    + id_repuesto: UUID
+    + nombre_pieza: String
+    + descripcion_tecnica: String
+    + estado_fisico: String
+    + categoria: String
+    + verificar_existencia(): Boolean
+}
+
+class Vehiculo {
+    + id_vehiculo: Integer
+    + marca: String
+    + modelo: String
+    + anio: Integer
+    + obtener_compatibilidades(): List
+}
+
+class MatrizCompatibilidad {
+    + {static} validar_match(repuesto_id, vehiculo_id): Boolean
+}
+
+' --- EL NÚCLEO OPERACIONAL: MERCADO DE OFERTAS Y DISPONIBILIDAD (HU 1, 5, 12) ---
+class Oferta {
+    + id_inventario: UUID
+    + valor_puntos: Float
+    + fecha_publicacion: DateTime
+    + estado_oferta: Boolean
+    + publicar_oferta(): Boolean
+    + cambiar_estado(nuevo_estado: Boolean): Void
+    + save()
+}
+
+class Disponibilidad {
+    + rango_horario: String
+    + referencia_ubicacion: String
+    + validar_coincidencia_horaria(): Boolean
+}
+
+class Fotografia {
+    + id_foto: Integer
+    + url_imagen: String
+    + hash_seguridad: String
+    + fecha_carga: DateTime
+    + verificar_integridad_imagen(): Boolean
+}
+
+' --- SERVICIO DE TASACIÓN ---
+class Tasacion {
+    + id_tasacion: Integer
+    + algoritmo_version: String
+    + valor_calculado: Float
+    + ejecutar_tasacion_automatica(): Float
+}
+
+class TasacionService <<Service>> {
+    + calcularPuntosAlgoritmicamente(datos_tecnicos): Float
+}
+
+' --- MÓDULO DE URGENCIAS: TABLÓN COMUNITARIO (HU 6) ---
+class Urgencia {
+    + id_urgencia: Integer
+    + nombre_pieza_requerida: String
+    + descripcion_contexto: String
+    + fecha_hora_publicacion: DateTime
+    + activa: Boolean = True
+    + publicar_en_tablon(datos_urgencia, vehiculo: Vehiculo): Boolean
+    + verificar_expiracion_2_horas(): Boolean
+    + dar_de_baja_automatica(): Void
+}
+
+' --- ECONOMÍA DE PUNTOS E INTEGRIDAD (HU 8) ---
+class Puntos {
+    + saldo_actual: Float
+    + fecha_actualizacion: DateTime
+    + acreditar_puntos(monto: Float): Void
+    + debitar_puntos(monto: Float): Void
+}
+
+class Transaccion {
+    + id_transaccion: UUID
+    + fecha_exito: DateTime
+    + puntos_transferidos: Float
+    + estado: String
+    + procesar_intercambio(): Boolean
+}
+
+class Historial {
+    + id_historial: Integer
+    + total_intercambios: Integer
+    + es_inalterable: Boolean = True
+    + validar_integridad(): Boolean
+}
+
+class Calificacion {
+    + id_calificacion: UUID
+    + puntuacion: Integer
+    + comentario: String
+    + fecha: DateTime
+}
+
+' --- MÓDULO DE CHAT LOGÍSTICO Y ACUERDOS (HU 4) ---
+class AcuerdoIntercambio {
+    + id_acuerdo: UUID
+    + estado: String
+    + fecha_creacion: DateTime
+    + fecha_actualizacion: DateTime
+    + estado_anterior: String
+}
+
+class Conversacion {
+    + id_conversacion: UUID
+    + fecha_inicio: DateTime
+    + activa: Boolean
+    + iniciar_conversacion(acuerdo_id): Conversacion
+}
+
+class Mensaje {
+    + id_mensaje: UUID
+    + texto: String
+    + fecha_envio: DateTime
+    + leido: Boolean
+    + marcar_leido(): Void
+}
+
+' ===================================================
+' ---   DEFINICIÓN DE RELACIONES TÉCNICAS (ORM)   ---
+' ===================================================
+
+' 1. Árbol de Herencia Compactado
+Usuario <|-- Vecino
+Usuario <|-- Admin
+
+' 2. Relaciones del Vecino
+Vecino "1" *-- "1" Historial : posee >
+Vecino "1" -- "0..5" Oferta : publica >
+Vecino "1" -- "1" Puntos : acumula >
+Vecino "1" -- "0..*" Urgencia : publica >
+
+' 3. Composición de Imágenes y Asociación con Repuestos/Logística
+Oferta "0..*" o-- "1" Repuesto : contiene >
+Oferta "1" *-- "3..5" Fotografia : documentada_con >
+Oferta "1" -- "1" Disponibilidad : define >
+
+' 4. Matriz de Compatibilidad
+Repuesto "1" -- "0..*" MatrizCompatibilidad : mapea >
+Vehiculo "1" -- "0..*" MatrizCompatibilidad : aplica >
+
+' 5. Relaciones de Urgencia (Tablón HU 6) y Acuerdos
+Urgencia "0..*" -- "1" Vehiculo : asociada a >
+Urgencia "0..*" -- "1" Repuesto : requiere >
+Urgencia "0..1" -- "0..*" AcuerdoIntercambio : genera >
+
+' 6. El Pivote Central de la Transacción y Economía
+Transaccion "0..*" -- "1" Oferta : ejecuta >
+Transaccion "0..*" -- "1" Vecino : ofertante >
+Transaccion "0..*" -- "1" Vecino : demandante >
+Transaccion "*" -- "1" Tasacion : basada en >
+
+' 7. El Historial Comunitario colecciona Transacciones completadas
+Historial "1" -- "0..*" Transaccion : registra >
+
+' 8. Dependencia del Servicio de Tasación
+Oferta ..> TasacionService : consulta >
+
+' 9. Relaciones de Control del Administrador
+Admin ..> MatrizCompatibilidad : modifica >
+Admin ..> Repuesto : gestiona >
+
+' 10. Relaciones del Módulo de Chat y Acuerdos (HU 4)
+Oferta "1" -- "0..*" AcuerdoIntercambio : genera >
+AcuerdoIntercambio "1" -- "1" Conversacion : habilita >
+Conversacion "1" -- "0.." Mensaje : contiene >
+Mensaje "0..*" -- "1" Vecino : emisor >
+AcuerdoIntercambio "0..*" -- "1" Vecino : ofertante >
+AcuerdoIntercambio "0..*" -- "1" Vecino : demandante >
+AcuerdoIntercambio "0..*" -- "0..1" Vecino : cancelacion_solicitada_por >
+
+' 11. Relaciones de Calificación (Proyecto Organización)
+Transaccion "1" -- "0.." Calificacion : contiene >
+Vecino "1" -- "0..*" Calificacion : realiza >
+Vecino "1" -- "0..*" Calificacion : recibe >
+
+@enduml
